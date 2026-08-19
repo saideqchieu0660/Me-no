@@ -1163,11 +1163,13 @@ function Layout({ children }: { children: React.ReactNode }) {
     const setupRankingListener = async () => {
       try {
         const { db } = await import("./lib/firebase");
-        const { collection, getDocs } = await import("firebase/firestore");
+        const { collection, getDocs, query, where, limit } = await import("firebase/firestore");
         const usersCol = collection(db, "users");
         
-        // Cắt bỏ onSnapshot, sử dụng getDocs để fetch 1 lần duy nhất
-        const snapshot = await getDocs(usersCol);
+        // SỬA LỖI FULL TABLE SCAN GÂY CẠN QUOTA READS
+        // Thay vì tải toàn bộ collection users, chỉ tải top 100 người dùng có điểm > 0
+        const q = query(usersCol, where("points", ">", 0), limit(100));
+        const snapshot = await getDocs(q);
         const usersList: any[] = [];
         snapshot.forEach((doc) => {
           usersList.push({ id: doc.id, ...doc.data() });

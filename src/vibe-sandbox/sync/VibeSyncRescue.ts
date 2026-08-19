@@ -1,6 +1,6 @@
 import { get, set, keys } from "idb-keyval";
 import { db } from "../../lib/firebase";
-import { collection, doc, getDocs, getDoc, writeBatch } from "firebase/firestore";
+import { collection, doc, getDocs, getDoc, writeBatch, query, where } from "firebase/firestore";
 import { store } from "../../lib/store";
 import { auth } from "../../lib/firebase";
 
@@ -34,11 +34,10 @@ export async function forceMergeRescue(): Promise<string> {
     // 2. GOM CLOUD DATA
     log.push("Đang tải dữ liệu từ Cloud (Firestore)...");
     const cloudDecks: Record<string, any> = {};
-    const cloudDecksSnap = await getDocs(collection(db, "vibe_decks"));
+    const qDecks = query(collection(db, "vibe_decks"), where("ownerId", "==", uid));
+    const cloudDecksSnap = await getDocs(qDecks);
     cloudDecksSnap.forEach(d => {
-       if (d.data().ownerId === uid) {
-          cloudDecks[d.id] = { id: d.id, ...d.data() };
-       }
+       cloudDecks[d.id] = { id: d.id, ...d.data() };
     });
 
     let cloudProfile: any = null;
