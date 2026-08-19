@@ -2601,6 +2601,7 @@ ${reminderSuffix}`;
 
   const initVibeRotator = async () => {
     if (isVibeRotatorInitialized) return;
+    if (admin.apps.length === 0) return;
     isVibeRotatorInitialized = true;
     try {
       const db = admin.firestore();

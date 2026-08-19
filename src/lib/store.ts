@@ -1469,7 +1469,8 @@ export const store = {
      card.interval = inter;
      card.isNewCard = false;
      card.updatedAt = nowStr;
-     card.nextReviewDate = Date.now() + (inter * 86400000); // interval to milliseconds
+     card.nextReviewDate = Date.now() + (inter * 86400000);
+     card.nextReview = card.nextReviewDate; // interval to milliseconds
 
      const masteryChange = card.mastery - oldMastery;
      
