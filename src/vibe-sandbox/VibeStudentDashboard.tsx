@@ -726,7 +726,8 @@ export default function VibeStudentDashboard() {
             id: s.cardId,
             mastery: s.mastery,
             isWeakCard: s.isHard,
-            nextReviewDate: s.nextReviewDate
+            nextReviewDate: s.nextReviewDate,
+            updatedAt: s.updatedAt || Date.now()
         }));
         if (isMounted) {
           setPersonalCardStates(states);
@@ -743,6 +744,40 @@ export default function VibeStudentDashboard() {
     };
   }, [user?.id]);
 
+  // Handle cross-tab/cross-component state updates from VibeSyncEngine or other sources
+  useEffect(() => {
+    const handleStatesUpdated = (e: any) => {
+      const newStates = e.detail?.states || [];
+      if (newStates.length === 0) return;
+      
+      setPersonalCardStates(prev => {
+        const next = [...prev];
+        let hasChanges = false;
+        
+        for (const newState of newStates) {
+           const existingIdx = next.findIndex(s => s.id === newState.cardId);
+           if (existingIdx >= 0) {
+              if (newState.updatedAt && next[existingIdx].updatedAt && newState.updatedAt <= next[existingIdx].updatedAt) {
+                 continue; // Skip if older
+              }
+              next[existingIdx] = { ...next[existingIdx], ...newState, id: newState.cardId };
+              hasChanges = true;
+           } else {
+              next.push({ ...newState, id: newState.cardId });
+              hasChanges = true;
+           }
+        }
+        
+        return hasChanges ? next : prev;
+      });
+    };
+
+    window.addEventListener("vibe-card-states-updated", handleStatesUpdated);
+    return () => {
+      window.removeEventListener("vibe-card-states-updated", handleStatesUpdated);
+    };
+  }, []);
+
   // 3. Merge raw decks and personal card states to form localDecks and store
   const localDecks = useMemo(() => {
     if (rawDecks.length === 0) return store.getDecks();
@@ -752,48 +787,67 @@ export default function VibeStudentDashboard() {
       personalCardStates.forEach((s) => stateMap.set(s.id, s));
     }
 
+    const getCardTimestamp = (obj: any): number => {
+      if (!obj) return 0;
+      let ts = 0;
+      if (typeof obj.lastUpdatedAt === 'number') ts = Math.max(ts, obj.lastUpdatedAt);
+      if (typeof obj.updatedAt === 'string') {
+          const parsed = new Date(obj.updatedAt).getTime();
+          if (!isNaN(parsed)) ts = Math.max(ts, parsed);
+      } else if (typeof obj.updatedAt === 'number') {
+          ts = Math.max(ts, obj.updatedAt);
+      }
+      return ts;
+    };
+
     return rawDecks.map((deck) => {
       const clonedDeck = { ...deck };
       if (clonedDeck.cards) {
         clonedDeck.cards = clonedDeck.cards.map((card) => {
           const savedState = stateMap.get(card.id);
           if (savedState) {
-            return {
-              ...card,
-              mastery:
-                typeof savedState.mastery === "number" &&
-                !isNaN(savedState.mastery)
-                  ? savedState.mastery
-                  : Number(card.mastery) || 0,
-              nextReviewDate:
-                typeof savedState.nextReviewDate === "number"
-                  ? savedState.nextReviewDate
-                  : card.nextReviewDate,
-              nextReview:
-                typeof savedState.nextReview === "number"
-                  ? savedState.nextReview
-                  : card.nextReview,
-              interval:
-                typeof savedState.interval === "number"
-                  ? savedState.interval
-                  : card.interval,
-              repetitionCount:
-                typeof savedState.repetitionCount === "number"
-                  ? savedState.repetitionCount
-                  : card.repetitionCount,
-              easeFactor:
-                typeof savedState.easeFactor === "number"
-                  ? savedState.easeFactor
-                  : card.easeFactor,
-              isNewCard:
-                typeof savedState.isNewCard === "boolean"
-                  ? savedState.isNewCard
-                  : false,
-              isHard:
-                typeof savedState.isWeakCard !== "undefined"
-                  ? savedState.isWeakCard
-                  : card.isHard,
-            };
+            const cardTs = getCardTimestamp(card);
+            const savedTs = getCardTimestamp(savedState);
+            
+            if (savedTs >= cardTs) {
+              return {
+                ...card,
+                mastery:
+                  typeof savedState.mastery === "number" &&
+                  !isNaN(savedState.mastery)
+                    ? savedState.mastery
+                    : Number(card.mastery) || 0,
+                nextReviewDate:
+                  typeof savedState.nextReviewDate === "number"
+                    ? savedState.nextReviewDate
+                    : card.nextReviewDate,
+                nextReview:
+                  typeof savedState.nextReview === "number"
+                    ? savedState.nextReview
+                    : card.nextReview,
+                interval:
+                  typeof savedState.interval === "number"
+                    ? savedState.interval
+                    : card.interval,
+                repetitionCount:
+                  typeof savedState.repetitionCount === "number"
+                    ? savedState.repetitionCount
+                    : card.repetitionCount,
+                easeFactor:
+                  typeof savedState.easeFactor === "number"
+                    ? savedState.easeFactor
+                    : card.easeFactor,
+                isNewCard:
+                  typeof savedState.isNewCard === "boolean"
+                    ? savedState.isNewCard
+                    : false,
+                isHard:
+                  typeof savedState.isWeakCard !== "undefined"
+                    ? savedState.isWeakCard
+                    : card.isHard,
+                updatedAt: savedState.updatedAt || card.updatedAt
+              };
+            }
           }
           return card;
         });

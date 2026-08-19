@@ -35,7 +35,7 @@ export interface VibeFlashcardActiveViewProps {
   onListen: (e?: React.MouseEvent, text?: string, locale?: string) => void;
   isExtracting: boolean;
   deepExplanation: string | null;
-  onAgent3: (customPromptOverride?: string) => void;
+  onAgent3: (customPromptOverride?: string, useProModel?: boolean) => void;
   onClearExplanation: () => void;
   isClozeMode?: boolean;
   onToggleClozeMode?: () => void;
@@ -67,7 +67,20 @@ export interface VibeFlashcardActiveViewProps {
 }
 
 // Helper to pre-process text to convert "\n" or "/n/" to real newlines
-const processText = (text: string) => text ? text.replace(/\\n|\/n\//gi, '\n') : "";
+const processText = (text: string) => {
+  if (!text) return "";
+  let res = text.replace(/\\n|\/n\//gi, '\n');
+  
+  // Strip wrapping code blocks if the AI put the entire text in one
+  if (res.trim().startsWith("```") && res.trim().endsWith("```")) {
+     res = res.trim().replace(/^```[a-z]*\n?/i, '').replace(/\n?```\s*$/, '');
+  }
+  
+  // Auto-format multiple choice options (A., B., C., D.) to be on their own lines
+  res = res.replace(/ +([A-Da-d])\.\s/g, '\n$1. ');
+  
+  return res.trim();
+};
 
 export const VibeFlashcardActiveView: React.FC<VibeFlashcardActiveViewProps> = React.memo(({
   currentCard,
@@ -120,11 +133,13 @@ export const VibeFlashcardActiveView: React.FC<VibeFlashcardActiveViewProps> = R
   const [customCardType, setCustomCardType] = useState("");
   const [customPrompt, setCustomPrompt] = useState("");
   const [customLength, setCustomLength] = useState<"short" | "normal" | "detailed">("normal");
+  const [useProModel, setUseProModel] = useState(false);
 
   const [globalPrompts, setGlobalPrompts] = useState<any[]>([]);
   const [isCreatingGlobal, setIsCreatingGlobal] = useState(false);
   const [newGlobalTitle, setNewGlobalTitle] = useState("");
   const [newGlobalPrompt, setNewGlobalPrompt] = useState("");
+  const [isGeneratingPrompt, setIsGeneratingPrompt] = useState(false);
 
   const fetchGlobalPrompts = async () => {
     try {
@@ -137,6 +152,37 @@ export const VibeFlashcardActiveView: React.FC<VibeFlashcardActiveViewProps> = R
       }
     } catch (e) {
       console.error(e);
+    }
+  };
+
+  const handleGeneratePrompt = async () => {
+    if (!newGlobalTitle.trim()) {
+      toast.error("Vui lòng nhập Tên/Mô tả nhãn trước (VD: Giải thích kiểu GenZ)");
+      return;
+    }
+    setIsGeneratingPrompt(true);
+    try {
+      const res = await safeFetch("/api/vibe/generate-prompt", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ description: newGlobalTitle })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && data.prompt) {
+          setNewGlobalPrompt(data.prompt);
+          toast.success("Đã tạo prompt thành công!");
+        } else {
+          toast.error("Không thể tạo prompt, vui lòng thử lại.");
+        }
+      } else {
+        toast.error("Lỗi kết nối khi tạo prompt.");
+      }
+    } catch (e) {
+      console.error(e);
+      toast.error("Đã xảy ra lỗi khi tạo prompt.");
+    } finally {
+      setIsGeneratingPrompt(false);
     }
   };
 
@@ -201,7 +247,7 @@ export const VibeFlashcardActiveView: React.FC<VibeFlashcardActiveViewProps> = R
   const handleAutoClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     setShowAiDropdown(false);
-    onAgent3();
+    onAgent3(undefined, useProModel);
   };
 
   const handleCustomClick = (e: React.MouseEvent) => {
@@ -244,7 +290,7 @@ export const VibeFlashcardActiveView: React.FC<VibeFlashcardActiveViewProps> = R
     } else if (customLength === "detailed") {
        finalPrompt += "\n\n(YÊU CẦU ĐỘ DÀI: Hãy giải thích cặn kẽ, bóc tách chi tiết từng vấn đề, lật đi lật lại ngọn ngành, có kèm ví dụ minh họa và mở rộng sâu sắc).";
     }
-    onAgent3(finalPrompt);
+    onAgent3(finalPrompt, useProModel);
   };
 
   const handleFormatAI = async (e: React.MouseEvent) => {
@@ -726,9 +772,15 @@ export const VibeFlashcardActiveView: React.FC<VibeFlashcardActiveViewProps> = R
                    {/* Front of Card */}
                    {getWordFormBadge(parseWordForm())}
                    
-                   <h2 className="text-3xl sm:text-4xl md:text-5xl font-display font-bold text-zinc-900 dark:text-zinc-100 text-center break-words whitespace-pre-wrap w-full leading-tight">
-                      {processText(currentCard.front)}
-                   </h2>
+                   {(() => {
+                      const frontText = processText(currentCard.front);
+                      const alignment = frontText.includes('\n') ? 'text-left' : 'text-center';
+                      return (
+                        <h2 className={`text-3xl sm:text-4xl md:text-5xl font-display font-bold text-zinc-900 dark:text-zinc-100 ${alignment} break-words whitespace-pre-wrap w-full leading-tight`}>
+                           {frontText}
+                        </h2>
+                      );
+                   })()}
                    
                    {(() => {
                       const text = currentCard.front || "";
@@ -799,6 +851,19 @@ export const VibeFlashcardActiveView: React.FC<VibeFlashcardActiveViewProps> = R
                   <div className="px-3 py-1.5 text-[10px] font-bold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider border-b border-zinc-100 dark:border-zinc-800 mb-1">
                     Chế độ Giải thích AI
                   </div>
+                  
+                  <label className="flex items-center gap-2.5 px-3 py-2 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 cursor-pointer rounded-lg mb-1" onClick={(e) => e.stopPropagation()}>
+                    <input 
+                      type="checkbox" 
+                      checked={useProModel}
+                      onChange={(e) => setUseProModel(e.target.checked)}
+                      className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 bg-zinc-100 border-zinc-300 dark:border-zinc-700 dark:bg-zinc-900 cursor-pointer"
+                    />
+                    <div>
+                       <div className="text-xs font-bold text-zinc-800 dark:text-zinc-100">Sử dụng AI Suy luận sâu (Pro)</div>
+                       <div className="text-[10px] text-zinc-500">Mô hình cao cấp, chậm nhưng sắc bén hơn.</div>
+                    </div>
+                  </label>
                   
                   <button
                     onClick={handleAutoClick}
@@ -1095,22 +1160,33 @@ export const VibeFlashcardActiveView: React.FC<VibeFlashcardActiveViewProps> = R
                     rows={2}
                     className="w-full px-3 py-2 text-xs bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 resize-none"
                   />
-                  <div className="flex justify-end gap-2 pt-1">
+                  <div className="flex justify-between items-center gap-2 pt-1">
                     <button
                       type="button"
-                      onClick={() => setIsCreatingGlobal(false)}
-                      className="px-3 py-1.5 text-xs font-medium text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200"
+                      onClick={handleGeneratePrompt}
+                      disabled={!newGlobalTitle.trim() || isGeneratingPrompt}
+                      className="px-3 py-1.5 text-xs font-bold text-purple-700 dark:text-purple-300 bg-purple-100 hover:bg-purple-200 dark:bg-purple-900/40 dark:hover:bg-purple-900/60 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
                     >
-                      Hủy
+                      <Sparkles className="w-3.5 h-3.5" />
+                      {isGeneratingPrompt ? "Đang viết..." : "Nhờ AI viết Prompt"}
                     </button>
-                    <button
-                      type="button"
-                      onClick={handleCreateGlobalPrompt}
-                      disabled={!newGlobalTitle.trim() || !newGlobalPrompt.trim()}
-                      className="px-3 py-1.5 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      Lưu nhãn Global
-                    </button>
+                    <div className="flex justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setIsCreatingGlobal(false)}
+                        className="px-3 py-1.5 text-xs font-medium text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200"
+                      >
+                        Hủy
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleCreateGlobalPrompt}
+                        disabled={!newGlobalTitle.trim() || !newGlobalPrompt.trim()}
+                        className="px-3 py-1.5 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        Lưu nhãn Global
+                      </button>
+                    </div>
                   </div>
                 </div>
               )}

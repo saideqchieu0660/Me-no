@@ -566,6 +566,40 @@ export default function VibeStudyRoom() {
     };
   }, [user?.id]);
 
+  // Handle cross-tab/cross-component state updates from VibeSyncEngine or other sources
+  useEffect(() => {
+    const handleStatesUpdated = (e: any) => {
+      const newStates = e.detail?.states || [];
+      if (newStates.length === 0) return;
+      
+      setPersonalCardStates(prev => {
+        const next = [...prev];
+        let hasChanges = false;
+        
+        for (const newState of newStates) {
+           const existingIdx = next.findIndex(s => s.id === newState.cardId);
+           if (existingIdx >= 0) {
+              if (newState.updatedAt && next[existingIdx].updatedAt && newState.updatedAt <= next[existingIdx].updatedAt) {
+                 continue; // Skip if older
+              }
+              next[existingIdx] = { ...next[existingIdx], ...newState, id: newState.cardId };
+              hasChanges = true;
+           } else {
+              next.push({ ...newState, id: newState.cardId });
+              hasChanges = true;
+           }
+        }
+        
+        return hasChanges ? next : prev;
+      });
+    };
+
+    window.addEventListener("vibe-card-states-updated", handleStatesUpdated);
+    return () => {
+      window.removeEventListener("vibe-card-states-updated", handleStatesUpdated);
+    };
+  }, []);
+
   // 3. Merge raw deck and personal card states to form reactive deck
   const deck = useMemo(() => {
     if (!rawDeck) return null;
@@ -1948,7 +1982,7 @@ export default function VibeStudyRoom() {
     };
   };
 
-  const handleAgent3 = async (customPromptOverride?: string) => {
+  const handleAgent3 = async (customPromptOverride?: string, useProModel?: boolean) => {
     if (!currentCard) return;
 
     if (user && user.role === "student" && cooldownRemaining > 0) {
@@ -2019,7 +2053,8 @@ export default function VibeStudyRoom() {
           context: contextualPrompt,
           mode: "flashcard_assist",
           responseMode: "direct",
-          responseStyle: "concise"
+          responseStyle: "concise",
+          useProModel: useProModel
         }),
       });
 

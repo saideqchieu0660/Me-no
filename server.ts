@@ -253,13 +253,13 @@ const rotationLogs: RotationLog[] = [];
 
 // Global API Feature Toggles with Cloud Persistence fallback
 let isOpenRouterEnabled = false;
-let isGroqEnabled = true; // This is Cerebras
+let isGroqEnabled = false; // Disabled by mandate
 let isGeminiEnabled = true;
 let isDeepInfraEnabled = false;
 
 // Provider toggle aliases for explicit clarity
-const ENABLE_OPENROUTER = () => isOpenRouterEnabled;
-const ENABLE_CEREBRAS = () => isGroqEnabled;
+const ENABLE_OPENROUTER = () => false;
+const ENABLE_CEREBRAS = () => false;
 const ENABLE_GOOGLE = () => isGeminiEnabled;
 
 let lastConfigFetchTime = 0;
@@ -275,10 +275,10 @@ async function refreshApiToggles() {
       if (doc.exists) {
         const data = doc.data();
         if (data) {
-          if (data.openRouterEnabled !== undefined) isOpenRouterEnabled = data.openRouterEnabled;
-          if (data.groqEnabled !== undefined) isGroqEnabled = data.groqEnabled;
+          isOpenRouterEnabled = false;
+          isGroqEnabled = false;
+          isDeepInfraEnabled = false;
           if (data.geminiEnabled !== undefined) isGeminiEnabled = data.geminiEnabled;
-          if (data.deepInfraEnabled !== undefined) isDeepInfraEnabled = data.deepInfraEnabled;
         }
       } else {
         await db.collection("system_config").doc("api_toggles").set({
@@ -299,10 +299,10 @@ async function refreshApiToggles() {
           const json = await res.json();
           const fields = json.fields;
           if (fields) {
-            if (fields.openRouterEnabled && fields.openRouterEnabled.booleanValue !== undefined) isOpenRouterEnabled = fields.openRouterEnabled.booleanValue;
-            if (fields.groqEnabled && fields.groqEnabled.booleanValue !== undefined) isGroqEnabled = fields.groqEnabled.booleanValue;
+            isOpenRouterEnabled = false;
+            isGroqEnabled = false;
+            isDeepInfraEnabled = false;
             if (fields.geminiEnabled && fields.geminiEnabled.booleanValue !== undefined) isGeminiEnabled = fields.geminiEnabled.booleanValue;
-            if (fields.deepInfraEnabled && fields.deepInfraEnabled.booleanValue !== undefined) isDeepInfraEnabled = fields.deepInfraEnabled.booleanValue;
           }
         }
       }
@@ -1134,8 +1134,6 @@ async function executeGenerateContentRoundRobin(contents: any, config: any = {})
   
   let activeProviders: string[] = [];
   if (geminiKeyStates.length > 0 || process.env.GEMINI_API_KEY) activeProviders.push("gemini");
-  if (groqKeyStates.length > 0) activeProviders.push("groq");
-  if (openRouterKeyStates.length > 0) activeProviders.push("openrouter");
 
   if (activeProviders.length === 0) {
     throw new Error("Tất cả Cổng API đều đã tắt hoặc hết key. Vui lòng bật ít nhất 1 nhà cung cấp.");
@@ -1149,11 +1147,12 @@ async function executeGenerateContentRoundRobin(contents: any, config: any = {})
         try {
           const { ai, state } = getGeminiClient();
           const response = await ai.models.generateContent({
-            model: "gemini-3.6-flash",
+            model: config.model || "gemini-3.6-flash",
             contents: promptText,
             config: {
               ...(config.systemInstruction ? { systemInstruction: config.systemInstruction } : {}),
               ...(config.temperature !== undefined ? { temperature: config.temperature } : {}),
+              ...(config.maxOutputTokens !== undefined ? { maxOutputTokens: config.maxOutputTokens } : {}),
               ...(isJsonMode ? { responseMimeType: "application/json" } : {})
             }
           });
@@ -2450,10 +2449,18 @@ ${reminderSuffix}`;
 
       let responseText = "";
       try {
+        let maxTokens = 8192;
+        if (responseStyle === "concise" || isConciseMode) maxTokens = 200;
+        if (responseStyle === "detailed") maxTokens = 2000;
+        if (responseStyle === "super_detailed") maxTokens = 4000;
+
+        const aiModelToUse = req.body.useProModel ? "gemini-1.5-pro" : "gemini-3.6-flash";
+
         responseText = await executeGenerateContentRoundRobin(contents, {
             systemInstruction: systemPrompt,
             temperature: responseMode === "direct" && responseStyle !== "detailed" ? 0.3 : 0.8,
-            maxOutputTokens: 8192
+            maxOutputTokens: maxTokens,
+            model: aiModelToUse
         });
       } catch (geminiError: any) {
          throw geminiError;
@@ -4124,6 +4131,35 @@ ${jsonText}`;
       res.json({ success: true, data: { id: docRef.id, ...newPrompt } });
     } catch (err: any) {
       console.error("Failed to add global prompt:", err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/vibe/generate-prompt", express.json(), async (req, res) => {
+    try {
+      const { description } = req.body;
+      if (!description) return res.status(400).json({ error: "Missing description" });
+
+      const systemInstruction = `Bạn là một chuyên gia viết Prompt (Prompt Engineer). 
+Nhiệm vụ của bạn là viết một đoạn hướng dẫn ngắn gọn (system prompt snippet) để chèn vào ngữ cảnh của AI, nhằm định hướng AI trả lời theo một phong cách hoặc yêu cầu cụ thể mà người dùng muốn tạo nhãn.
+
+Ví dụ: 
+- Người dùng nhập: "Giải thích kiểu GenZ"
+- Bạn viết: "Hãy giải thích bằng ngôn ngữ của GenZ, sử dụng các từ lóng (slang) phổ biến, cách nói chuyện hài hước, trẻ trung, nhưng vẫn đảm bảo giữ được ý nghĩa học thuật cốt lõi."
+
+Hãy trả về TRỰC TIẾP đoạn prompt đó, không giải thích, không bọc trong markdown block. Giữ nó ngắn gọn (khoảng 2-4 câu), sắc bén và tập trung vào phong cách/yêu cầu.`;
+
+      const contents = [{ role: "user", parts: [{ text: `Mô tả nhãn/phong cách người dùng muốn tạo: ${description}` }] }];
+      const responseText = await executeGenerateContentRoundRobin(contents, {
+        systemInstruction,
+        temperature: 0.7,
+        maxOutputTokens: 300,
+        model: "gemini-3.6-flash"
+      });
+
+      res.json({ success: true, prompt: responseText.trim() });
+    } catch (err: any) {
+      console.error("Failed to generate prompt:", err);
       res.status(500).json({ error: err.message });
     }
   });

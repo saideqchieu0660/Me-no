@@ -638,8 +638,10 @@ export const store = {
         if (profile) {
             // Check and update email for linked or existing accounts
             if (!firebaseUser.isAnonymous && firebaseUser.email && profile.email !== firebaseUser.email) {
-                await dbService.updateUserProfile(firebaseUser.uid, {
-                    email: firebaseUser.email
+                import('../vibe-sandbox/sync/VibeSyncEngine').then(({ VibeSyncEngine }) => {
+                    VibeSyncEngine.saveProfile(firebaseUser.uid, {
+                        email: firebaseUser.email
+                    });
                 });
             }
 
@@ -674,9 +676,11 @@ export const store = {
                 u.points = 0;
                 u.lastWeeklyResetWeek = currentWeek;
                 if (!firebaseUser.isAnonymous) {
-                    await dbService.updateUserProfile(firebaseUser.uid, {
-                        points: 0,
-                        lastWeeklyResetWeek: currentWeek
+                    import('../vibe-sandbox/sync/VibeSyncEngine').then(({ VibeSyncEngine }) => {
+                        VibeSyncEngine.saveProfile(firebaseUser.uid, {
+                            points: 0,
+                            lastWeeklyResetWeek: currentWeek
+                        });
                     });
                 }
                 // Đồng thời kích hoạt dọn dẹp Firestore tự động tuần đầy đủ cho toàn hệ thống
@@ -706,20 +710,22 @@ export const store = {
             if (!firebaseUser.isAnonymous) {
               const currentWeek = getISOWeekId();
               u.lastWeeklyResetWeek = currentWeek;
-              await dbService.updateUserProfile(firebaseUser.uid, {
-                 name: u.name,
-                 email: firebaseUser.email || "No Email linked",
-                 role: u.role,
-                 points: u.points,
-                 streak: u.streak,
-                 lastActiveDate: u.lastActiveDate,
-                 streakFreeze: !!u.streakFreeze,
-                 streakFreezeCount: u.streakFreezeCount || 0,
-                 doubleXPUntil: u.doubleXPUntil || 0,
-                 hideRankUntil: u.hideRankUntil || 0,
-                 isAnonymous: false,
-                 isPro: !!u.isPro,
-                 lastWeeklyResetWeek: currentWeek
+              import('../vibe-sandbox/sync/VibeSyncEngine').then(({ VibeSyncEngine }) => {
+                VibeSyncEngine.saveProfile(firebaseUser.uid, {
+                   name: u.name,
+                   email: firebaseUser.email || "No Email linked",
+                   role: u.role,
+                   points: u.points,
+                   streak: u.streak,
+                   lastActiveDate: u.lastActiveDate,
+                   streakFreeze: !!u.streakFreeze,
+                   streakFreezeCount: u.streakFreezeCount || 0,
+                   doubleXPUntil: u.doubleXPUntil || 0,
+                   hideRankUntil: u.hideRankUntil || 0,
+                   isAnonymous: false,
+                   isPro: !!u.isPro,
+                   lastWeeklyResetWeek: currentWeek
+                });
               });
             }
         }
@@ -729,9 +735,11 @@ export const store = {
         updateStreak(u);
         if (u.streak !== oldStreak) {
            if (!firebaseUser.isAnonymous) {
-              await dbService.updateUserProfile(firebaseUser.uid, {
-                 streak: u.streak,
-                 lastActiveDate: u.lastActiveDate
+              import('../vibe-sandbox/sync/VibeSyncEngine').then(({ VibeSyncEngine }) => {
+                VibeSyncEngine.saveProfile(firebaseUser.uid, {
+                   streak: u.streak,
+                   lastActiveDate: u.lastActiveDate
+                });
               });
            }
         }

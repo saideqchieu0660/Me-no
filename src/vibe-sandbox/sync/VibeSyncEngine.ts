@@ -305,6 +305,65 @@ class SyncEngineClass {
       }
     });
     this.unsubscribers.push(unsubscribeProfile);
+
+    // 3. Listen to Cards State (Critical Fix for sync conflict)
+    const cardsStateRef = collection(db, "users", uid, "cardsState");
+    const unsubscribeCardsState = onSnapshot(cardsStateRef, async (snapshot) => {
+      let hasChanges = false;
+      for (const change of snapshot.docChanges()) {
+        const stateData = { cardId: change.doc.id, ...change.doc.data() };
+        
+        if (change.type === "added" || change.type === "modified") {
+          try {
+            const local = await get(`vibe_cardstate_${uid}_${stateData.cardId}`) as any;
+            
+            let shouldUpdateLocal = false;
+            let shouldPushLocal = false;
+
+            const remoteTime = stateData.lastUpdatedAt || 0;
+            const localTime = local?.lastUpdatedAt || 0;
+
+            if (!local) {
+               shouldUpdateLocal = true;
+            } else if (remoteTime > localTime) {
+               shouldUpdateLocal = true;
+            } else if (localTime > remoteTime) {
+               shouldPushLocal = true;
+            }
+
+            if (shouldUpdateLocal) {
+               await set(`vibe_cardstate_${uid}_${stateData.cardId}`, stateData);
+               try {
+                 const { CardStateManager } = await import("../../lib/CardStateManager");
+                 await CardStateManager.updateCardState(uid, stateData.cardId, stateData);
+               } catch (err) {
+                 console.warn("[VibeSyncEngine] CardStateManager update error:", err);
+               }
+               hasChanges = true;
+               
+               if (typeof window !== "undefined") {
+                 window.dispatchEvent(
+                   new CustomEvent("vibe-card-states-updated", {
+                     detail: {
+                       states: [{ ...stateData, id: stateData.cardId }],
+                     },
+                   })
+                 );
+               }
+            }
+            
+            if (shouldPushLocal) {
+               this.enqueueChange({ type: "UPSERT_CARD_STATE", payload: local });
+            }
+            
+          } catch (e) { console.warn(e); }
+        }
+      }
+      if (hasChanges) this.notify();
+    }, (error) => {
+      console.error("[VibeSyncEngine] Realtime cardsState error:", error);
+    });
+    this.unsubscribers.push(unsubscribeCardsState);
   }
 
   stopRealtimeSync() {
