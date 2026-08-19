@@ -2929,7 +2929,7 @@ ${reminderSuffix}`;
      res.setHeader("Pragma", "no-cache");
      res.setHeader("Expires", "0");
      await refreshApiToggles(); 
-     return res.json({ groqEnabled: isGroqEnabled, openRouterEnabled: isOpenRouterEnabled, geminiEnabled: isGeminiEnabled, deepInfraEnabled: isDeepInfraEnabled }); 
+     return res.json({ groqEnabled: false, openRouterEnabled: false, geminiEnabled: true, deepInfraEnabled: false }); 
    }); 
    
    // --- SYSTEM LINKS ADMIN CONFIGURATIONS ---
