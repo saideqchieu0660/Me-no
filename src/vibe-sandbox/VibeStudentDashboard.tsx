@@ -2046,6 +2046,7 @@ export default function VibeStudentDashboard() {
 
   return (
     <div className="space-y-8 animate-in fade-in pb-12 relative w-full max-w-full">
+    <VibeRescueButton />
       <AnimatePresence>
         {levelUpData && (
           <motion.div
