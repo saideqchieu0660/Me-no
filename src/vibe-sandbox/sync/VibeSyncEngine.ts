@@ -311,7 +311,7 @@ class SyncEngineClass {
     const unsubscribeCardsState = onSnapshot(cardsStateRef, async (snapshot) => {
       let hasChanges = false;
       for (const change of snapshot.docChanges()) {
-        const stateData = { cardId: change.doc.id, ...change.doc.data() };
+        const stateData: any = { cardId: change.doc.id, ...change.doc.data() };
         
         if (change.type === "added" || change.type === "modified") {
           try {

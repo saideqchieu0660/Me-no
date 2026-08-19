@@ -1165,7 +1165,7 @@ async function executeGenerateContentRoundRobin(contents: any, config: any = {})
              state = clientInfo.state;
           }
           const response = await ai.models.generateContent({
-            model: config.model || "gemini-3.6-flash",
+            model: config.model || "gemini-2.5-flash",
             contents: promptText,
             config: {
               ...(config.systemInstruction ? { systemInstruction: config.systemInstruction } : {}),
@@ -1717,7 +1717,7 @@ BẮT BUỘC ĐỊNH DẠNG: Chỉ trả về ĐÚNG MỘT MẢNG JSON duy nhấ
          try {
             const extractRes = await executeGeminiWithRetry(async (ai) => {
                 return await ai.models.generateContent({
-                    model: "gemini-3.6-flash",
+                    model: "gemini-2.5-flash",
                     contents: [
                        { text: "Extract ALL text from this document comprehensively and literally. Do not summarize or explain." },
                        { inlineData: { data: base64Data, mimeType: mimeType || "application/pdf" } }
@@ -1915,7 +1915,7 @@ ${chunkWords.join("\n")}`;
          try {
             const extractRes = await executeGeminiWithRetry(async (ai) => {
                 return await ai.models.generateContent({
-                    model: "gemini-3.6-flash",
+                    model: "gemini-2.5-flash",
                     contents: [
                        { text: "Extract ALL text from this document comprehensively and literally. Do not summarize or explain." },
                        { inlineData: { data: finalBase64Data, mimeType: mimeType || "application/pdf" } }
@@ -1956,7 +1956,7 @@ ${chunkWords.join("\n")}`;
       }
 
       const isBackup = provider === "backup";
-      const modelToUse = isBackup ? "gemini-3.6-flash" : "gemini-3.6-flash";
+      const modelToUse = isBackup ? "gemini-2.5-flash" : "gemini-2.5-flash";
       console.log(`[Chunking Log Backend] Bắt đầu xử lý chunk. Provider: ${provider || "primary"} | Model: ${modelToUse} | Số từ/dòng: ${chunkWords.length}`);
 
       const prompt = `[STRICT DETERMINISTIC MODE] Bạn là một cỗ máy biên dịch dữ liệu (Data Compiler).
@@ -2384,11 +2384,8 @@ ${reminderSuffix}`;
       let responseText = "";
       try {
         let maxTokens = 8192;
-        if (responseStyle === "concise" || isConciseMode) maxTokens = 200;
-        if (responseStyle === "detailed") maxTokens = 2000;
-        if (responseStyle === "super_detailed") maxTokens = 4000;
-
-        const aiModelToUse = req.body.useProModel ? "gemini-2.5-pro" : "gemini-3.6-flash";
+        // removed maxTokens override due to early truncation bug
+        const aiModelToUse = req.body.useProModel ? "gemini-2.5-pro" : "gemini-2.5-flash";
 
         responseText = await executeGenerateContentRoundRobin(contents, Object.assign({}, {
             systemInstruction: systemPrompt,
@@ -2613,7 +2610,7 @@ ${reminderSuffix}`;
       }
 
       const response = await ai.models.generateContent({
-        model: "gemini-3.6-flash",
+        model: "gemini-2.5-flash",
         contents: prompt,
       });
       return response.text;
@@ -3636,7 +3633,7 @@ ${textChunk}`;
         const activePrompt = isDegraded ? degradedPrompt : normalPrompt;
 
         const response = await ai.models.generateContent({
-          model: "gemini-3.6-flash",
+          model: "gemini-2.5-flash",
           contents: activePrompt,
           config: {
             responseMimeType: "application/json",
@@ -4088,8 +4085,7 @@ Hãy trả về TRỰC TIẾP đoạn prompt đó, không giải thích, không 
       const responseText = await executeGenerateContentRoundRobin(contents, Object.assign({}, {
         systemInstruction,
         temperature: 0.7,
-        maxOutputTokens: 300,
-        model: "gemini-3.6-flash"
+        model: "gemini-2.5-flash"
       }, { byokKey: req?.headers["x-cerebras-key"] || req?.headers["x-byok-key"] || (req?.headers["authorization"] || "").replace("Bearer ","") }));
 
       res.json({ success: true, prompt: responseText.trim() });
