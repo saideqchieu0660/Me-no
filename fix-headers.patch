@@ -1,0 +1,22 @@
+--- src/utils/apiClient.ts
++++ src/utils/apiClient.ts
+@@ -1980,5 +1980,15 @@
+ 
+-      const originalHeaders = currentOptions.headers
+-        ? { ...currentOptions.headers }
+-        : {};
++      let originalHeaders: Record<string, string> = {};
++      if (currentOptions.headers) {
++        if (currentOptions.headers instanceof Headers) {
++          currentOptions.headers.forEach((value, key) => {
++            originalHeaders[key] = value;
++          });
++        } else if (Array.isArray(currentOptions.headers)) {
++          currentOptions.headers.forEach(([key, value]) => {
++            originalHeaders[key] = value;
++          });
++        } else {
++          originalHeaders = { ...currentOptions.headers } as Record<string, string>;
++        }
++      }
+ 

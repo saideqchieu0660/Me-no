@@ -1,0 +1,361 @@
+@import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800&family=Quicksand:wght@500;600;700&family=JetBrains+Mono:wght@400;700&display=swap');
+@import "tailwindcss";
+
+@custom-variant dark (&:is(.dark *));
+
+:root {
+  --ui-density: 1.0;
+}
+
+@theme {
+  --spacing: calc(0.25rem * var(--ui-density, 1));
+  --font-sans: "Nunito", sans-serif;
+  --font-display: "Quicksand", sans-serif;
+  --font-roman: "Quicksand", sans-serif;
+  --font-serif: "Quicksand", sans-serif;
+  --font-mono: "JetBrains Mono", monospace;
+
+  --color-gold-400: #fb923c;
+  --color-gold-500: #f97316;
+  --color-gold-600: #ea580c;
+  --color-cyber-gold: #f97316;
+
+  --animate-rainbow-text: rainbow-text 3s linear infinite;
+  --animate-rainbow-bg: rainbow-bg 3s linear infinite;
+}
+
+@keyframes rainbow-text {
+  0% { background-position: 0% 50%; }
+  100% { background-position: 200% 50%; }
+}
+
+@keyframes rainbow-bg {
+  0% { background-position: 0% 50%; }
+  100% { background-position: 200% 50%; }
+}
+
+@layer utilities {
+  .hardware-tab-content {
+    display: none;
+  }
+  .hardware-tab-active {
+    display: block;
+    contain: content;
+    will-change: transform, opacity;
+    transform: translateZ(0);
+  }
+  
+  /* Safe Area Insets for Mobile/PWA */
+  .pb-safe { padding-bottom: env(safe-area-inset-bottom, 0px); }
+  .pt-safe { padding-top: env(safe-area-inset-top, 0px); }
+  .pl-safe { padding-left: env(safe-area-inset-left, 0px); }
+  .pr-safe { padding-right: env(safe-area-inset-right, 0px); }
+  .min-h-screen-safe { min-height: calc(100dvh - env(safe-area-inset-bottom, 0px) - env(safe-area-inset-top, 0px)); }
+  .mb-safe { margin-bottom: env(safe-area-inset-bottom, 0px); }
+  .mt-safe { margin-top: env(safe-area-inset-top, 0px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, ::before, ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+.bg-size-200 { background-size: 200% 200%; }
+
+@layer base {
+  body.dark, .dark body, .dark {
+    background-color: #0d1527 !important;
+    color: #e2e8f0 !important;
+  }
+  html, body {
+    @apply antialiased min-h-screen font-sans;
+    @apply text-zinc-900;
+    overflow-x: hidden;
+    max-width: 100vw;
+    width: 100%;
+  }
+  body {
+    background-color: #fafafa;
+  }
+  .dark body {
+    @apply text-zinc-300;
+    background-color: #0d1527 !important; /* Xanh đen sáng */
+    animation: none !important;
+  }
+
+  /* Ở theme tối, chữ nào màu cam thành màu vàng kim */
+  .dark [class*="text-orange-"] {
+    color: #fbbf24 !important; /* Vàng kim sáng */
+  }
+  .dark [class*="hover:text-orange-"]:hover {
+    color: #facc15 !important;
+  }
+
+  .henosis-title {
+    background: linear-gradient(135deg, #d97706 0%, #0284c7 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    display: inline-block;
+  }
+  .dark .henosis-title {
+    background: none !important;
+    -webkit-text-fill-color: initial !important;
+    color: #fbbf24 !important;
+  }
+
+
+
+  /* Strip heavy box shadows dynamically across app */
+  .shadow-xl, .shadow-2xl {
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1) !important;
+  }
+
+  *:focus-visible {
+    outline: 1px solid rgba(249, 115, 22, 0.5);
+    outline-offset: 2px;
+    border-radius: 0.5rem;
+    transition: outline-color 0.15s ease-out;
+  }
+}
+
+/* ========================================================================= */
+/* DUAL-FONT ETHEREAL TYPOGRAPHY SYSTEM */
+/* ========================================================================= */
+
+h1, h2, h3, h4, h5, h6, 
+.dialog-title, .card-title, .hero-title,
+[class*="text-2xl"], [class*="text-3xl"], [class*="text-4xl"], [class*="text-5xl"], [class*="text-6xl"] {
+  font-family: var(--font-serif) !important;
+  font-style: normal !important;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+p, span, div, .font-sans {
+  font-family: var(--font-sans);
+}
+
+p, .subtext, .chat-stream, .numeric {
+  font-weight: 500;
+  letter-spacing: 0;
+}
+
+strong, b {
+  font-weight: 700;
+}
+
+
+
+/* Theme Transition logic using View Transitions API Ethereal Optimization */
+.theme-transition::view-transition-old(root),
+.theme-transition::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+  display: block;
+}
+.theme-transition::view-transition-old(root) {
+  z-index: 1;
+}
+.theme-transition::view-transition-new(root) {
+  z-index: 2;
+  will-change: clip-path; /* Hardware accelerate the clip-path expansion */
+}
+
+/* Layer 1: Ethereal Minimalist Cards */
+.card-3d, .glass {
+  @apply relative text-left bg-white dark:bg-zinc-900/60 backdrop-blur-lg rounded-3xl transition-all duration-300;
+  border: 1px solid rgba(0, 0, 0, 0.03);
+  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.03), 0 1px 3px rgba(0, 0, 0, 0.02);
+}
+
+.dark .card-3d, .dark .glass {
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.2);
+}
+
+.card-3d::before, .glass::before, .card-3d::after, .glass::after {
+  display: none !important;
+}
+
+@media (hover: hover) {
+  .card-3d:hover, .glass:hover {
+    border-color: rgba(0, 0, 0, 0.08);
+  }
+  .dark .card-3d:hover, .dark .glass:hover {
+    border-color: rgba(255, 255, 255, 0.1);
+  }
+}
+
+/* Layer 2: Soft Friendly Buttons */
+.btn-3d {
+  @apply relative overflow-hidden transition-all duration-200 ease-out font-medium rounded-2xl tracking-normal;
+  background: white;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
+}
+.dark .btn-3d {
+  background: rgba(255, 255, 255, 0.03);
+  border-color: rgba(255, 255, 255, 0.1);
+  color: rgba(250, 250, 250, 0.9);
+}
+
+.btn-3d::after, .btn-3d::before {
+  display: none !important;
+}
+
+@media (hover: hover) {
+  .btn-3d:hover {
+    background: rgba(0, 0, 0, 0.02);
+  }
+  .dark .btn-3d:hover {
+    background: rgba(255, 255, 255, 0.06);
+  }
+}
+
+.btn-3d:active {
+  transform: scale(0.97);
+}
+
+.btn-3d-primary {
+  @apply text-white border-none bg-zinc-900 dark:bg-white dark:text-zinc-900 rounded-2xl transition-all font-semibold;
+  box-shadow: 0 4px 12px -2px rgba(0, 0, 0, 0.1);
+}
+
+@media (hover: hover) {
+  .btn-3d-primary:hover {
+    @apply bg-zinc-800 dark:bg-zinc-100;
+    box-shadow: 0 6px 16px -2px rgba(0, 0, 0, 0.15);
+  }
+}
+
+/* Inputs & Form Fields */
+.input-3d {
+  @apply bg-zinc-50 dark:bg-zinc-900/50 border border-zinc-200 dark:border-zinc-800 rounded-2xl transition-all duration-300 ease-out outline-none focus:ring-2 focus:ring-zinc-900/10 dark:focus:ring-white/10 px-4 py-3;
+}
+
+/* Layer 3: Soft Modals */
+.modal-glass-overlay {
+  @apply fixed inset-0 z-40 bg-zinc-900/20 dark:bg-zinc-950/60 backdrop-blur-sm transition-all duration-300 ease-out;
+}
+.modal-glass-content {
+  @apply relative z-50 bg-white dark:bg-zinc-900 border border-black/5 dark:border-white/10 transition-all duration-300 ease-out sm:rounded-3xl overflow-hidden;
+  box-shadow: 0 24px 48px -12px rgba(0, 0, 0, 0.1), 0 16px 24px -16px rgba(0,0,0,0.05);
+}
+
+/* 3D Flip Card CSS */
+.perspective-1000 {
+  perspective: 1500px;
+}
+.transform-style-3d {
+  transform-style: preserve-3d;
+  will-change: transform;
+}
+.backface-hidden {
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+.rotate-y-180 {
+  transform: rotateY(180deg);
+}
+
+/* Fix Lag Mode (Strict Performance Optimization 120FPS Marble) */
+.fix-lag body, .fix-lag .dark body {
+  animation: none !important;
+  background-image: none !important;
+}
+.fix-lag body {
+  background-color: #ffffff !important;
+}
+.fix-lag.dark body {
+  background-color: #09090b !important;
+}
+
+.fix-lag * {
+  box-shadow: none !important;
+  text-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  filter: none !important;
+  /* Bắt buộc chỉ sử dụng compositor property */
+  transition-property: transform, opacity !important;
+  transition-duration: 0ms !important;
+}
+
+.fix-lag [class*="animate-"] {
+  animation: none !important;
+}
+
+/* 120FPS Hardware Acceleration & Rendering Optimizations */
+.gpu-accelerated {
+  transform: translateZ(0);
+  will-change: transform, opacity;
+  backface-visibility: hidden;
+}
+
+/* Optimize long list performance */
+.content-visibility-auto {
+  content-visibility: auto;
+  contain-intrinsic-size: 100px 300px;
+}
+
+.fix-lag .card-3d:hover, .fix-lag .glass:hover, .fix-lag .stone-carved:hover {
+  transform: none !important;
+}
+
+.fix-lag .glass, .fix-lag .card-3d {
+  background-color: #ffffff !important;
+  border-color: #e4e4e7 !important;
+  color: #000000 !important;
+}
+.fix-lag.dark .glass, .fix-lag.dark .card-3d {
+  background-color: #09090b !important;
+  border-color: #27272a !important;
+  color: #ffffff !important;
+}
+
+.fix-lag .transform-style-3d {
+  transform-style: preserve-3d !important;
+}
+.fix-lag .backface-hidden {
+  backface-visibility: hidden !important;
+  -webkit-backface-visibility: hidden !important;
+  background-color: #ffffff !important;
+  color: #000000 !important;
+  border-color: #e4e4e7 !important;
+}
+.fix-lag.dark .backface-hidden {
+  background-color: #09090b !important;
+  color: #ffffff !important;
+  border-color: #27272a !important;
+}
+.fix-lag .backface-hidden * {
+  text-shadow: none !important;
+}
+
+/* Scaling */
+.card-3d, .glass {
+  margin-bottom: calc(0.5rem + 0.25rem * var(--app-font-scale, 1)) !important;
+  border-radius: calc(0.75rem + 0.25rem * var(--app-font-scale, 1)) !important;
+}
+
+.btn-3d {
+  border-radius: calc(0.5rem + 0.25rem * var(--app-font-scale, 1)) !important;
+}
+
+.input-3d {
+  border-radius: calc(0.5rem + 0.25rem * var(--app-font-scale, 1)) !important;
+}
+
+.modal-glass-content {
+  border-radius: calc(1rem + 0.5rem * var(--app-font-scale, 1)) !important;
+}
+
+
+.dark {
+  background-color: #0f172a;
+  color: #f1f5f9;
+}

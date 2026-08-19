@@ -1,0 +1,8 @@
+{
+  "name": "Remix Thoi-lock-in-lai-di-dung-choi-nua-met-lam-r",
+  "description": "Imported from GitHub: saideqchieu0660/Thoi-lock-in-lai-di-dung-choi-nua-met-lam-r",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
