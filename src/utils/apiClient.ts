@@ -1318,7 +1318,8 @@ export function getInterleavedPool(): InterleavedKey[] {
   try {
     if (typeof localStorage !== "undefined") {
       const byokKey = cleanKey(localStorage.getItem("henosis_cerebras_key"));
-      if (byokKey) groqKeysRaw.push(byokKey);
+      // The user is actually entering a Google Gemini key into the BYOK input, so push to geminiKeysRaw!
+      if (byokKey) geminiKeysRaw.push(byokKey);
     }
   } catch (e) {}
   try {
@@ -1375,9 +1376,12 @@ export function getInterleavedPool(): InterleavedKey[] {
     keys: string[];
   }[] = [];
 
-  // Enforce Cerebras only
-  if (validGroq.length > 0) {
+  // Enforce providers based on configuration
+  if (validGroq.length > 0 && isGroqEnabled) {
     lists.push({ provider: "cerebras", keys: validGroq });
+  }
+  if (validGemini.length > 0 && isGeminiEnabled) {
+    lists.push({ provider: "gemini", keys: validGemini });
   }
   if (lists.length === 0) return [];
 
@@ -1711,36 +1715,25 @@ async function executeFetchWithBackoffAndEvasion(
     let attempts = 0;
     // Max attempts should be at least length of the pool, up to 15, to ensure we cycle through all available keys
     let pool = getInterleavedPool();
-    if (!isUnitedEngine) {
-      pool = pool.filter(
-        (p) => p.provider === "groq" || p.provider === "cerebras",
-      );
-    } else {
-      pool = pool.filter(
-        (p) =>
-          p.provider === "groq" ||
-          p.provider === "cerebras" ||
-          p.provider === "gemini",
-      );
-    }
+    // Allow Gemini for all engines since the user only uses BYOK Gemini API.
+    pool = pool.filter(
+      (p) =>
+        p.provider === "gemini" ||
+        p.provider === "groq" ||
+        p.provider === "cerebras"
+    );
 
     const maxAttempts = Math.min(Math.max(5, pool.length), 15);
     let lastRotationError: any = null;
 
     while (attempts < maxAttempts) {
       let pool = getInterleavedPool(); // Fresh pool check prevents choosing cooled down keys
-      if (!isUnitedEngine) {
-        pool = pool.filter(
-          (p) => p.provider === "groq" || p.provider === "cerebras",
-        );
-      } else {
-        pool = pool.filter(
-          (p) =>
-            p.provider === "groq" ||
-            p.provider === "cerebras" ||
-            p.provider === "gemini",
-        );
-      }
+      pool = pool.filter(
+        (p) =>
+          p.provider === "gemini" ||
+          p.provider === "groq" ||
+          p.provider === "cerebras"
+      );
       if (pool.length === 0) {
         console.warn(
           "[apiClient Rotation] Interleaved pool is completely exhausted or filtered out.",

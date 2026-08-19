@@ -1132,12 +1132,7 @@ async function executeGenerateContentRoundRobin(contents: any, config: any = {})
     }
   }
   
-  let activeProviders: string[] = [];
-  if (geminiKeyStates.length > 0 || process.env.GEMINI_API_KEY || process.env.GEMINI_API_KEY_1 || process.env.VITE_GEMINI_API_KEY) activeProviders.push("gemini");
-
-  if (activeProviders.length === 0) {
-    throw new Error("Tất cả Cổng API đều đã tắt hoặc hết key. Vui lòng bật ít nhất 1 nhà cung cấp.");
-  }
+  let activeProviders: string[] = ["gemini"];
 
   let finalError: any = null;
 
@@ -1145,7 +1140,30 @@ async function executeGenerateContentRoundRobin(contents: any, config: any = {})
     try {
       if (provider === "gemini") {
         try {
-          const { ai, state } = getGeminiClient();
+          let ai;
+          let state;
+          if (config.byokKey) {
+             const h = getSpoofedHeaders();
+             ai = new GoogleGenAI({
+               apiKey: config.byokKey,
+               httpOptions: {
+                  headers: {
+                    "User-Agent": h["User-Agent"],
+                    "X-Forwarded-For": h["X-Forwarded-For"],
+                    "X-Real-IP": h["X-Real-IP"],
+                    "X-Client-IP": h["X-Client-IP"],
+                    "CF-Connecting-IP": h["CF-Connecting-IP"],
+                    "True-Client-IP": h["True-Client-IP"],
+                    "X-Originating-IP": h["X-Originating-IP"],
+                    "Forwarded": h["Forwarded"]
+                  }
+               }
+             });
+          } else {
+             const clientInfo = getGeminiClient();
+             ai = clientInfo.ai;
+             state = clientInfo.state;
+          }
           const response = await ai.models.generateContent({
             model: config.model || "gemini-3.6-flash",
             contents: promptText,
@@ -1164,95 +1182,7 @@ async function executeGenerateContentRoundRobin(contents: any, config: any = {})
         }
       }
 
-      if (provider === "groq") {
-        const numKeys = Math.min(groqKeyStates.length, 5);
-        for (let kIdx = 0; kIdx < numKeys; kIdx++) {
-          let currentGroqState: KeyState | null = null;
-          try {
-            const { key, state } = getGroqKey();
-            currentGroqState = state;
-            const isCerebras = key.startsWith("csk-") || key.startsWith("csk_") || !key.startsWith("gsk_");
-            const endpoint = isCerebras 
-              ? "https://api.cerebras.ai/v1/chat/completions" 
-              : "https://api.groq.com/openai/v1/chat/completions";
-            const modelName = isCerebras 
-              ? await getCerebrasModel() 
-              : "llama-3.3-70b-versatile";
-
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 30000);
-
-            const res = await fetch(endpoint, {
-              method: "POST",
-              headers: { 
-                "Content-Type": "application/json", 
-                "Authorization": `Bearer ${key}` 
-              },
-              body: JSON.stringify({
-                model: modelName,
-                messages: [
-                   ...(config.systemInstruction ? [{ role: "system", content: config.systemInstruction }] : []),
-                   { role: "user", content: promptText }
-                ],
-                temperature: config.temperature ?? 0.3,
-                max_tokens: 8192,
-                ...(isJsonMode ? { response_format: { type: "json_object" } } : {})
-              }),
-              signal: controller.signal
-            });
-            clearTimeout(timeoutId);
-
-            if (!res.ok) {
-              const errBody = await res.text().catch(() => "");
-              throw new Error(`Groq/Cerebras API Error ${res.status}: ${errBody}`);
-            }
-
-            const data = await res.json();
-            const text = data?.choices?.[0]?.message?.content || "";
-            if (text) {
-              addGroqRotationLog({ toKeyIndex: state.index, reason: `Execution successful` });
-              return text;
-            }
-          } catch (err: any) {
-            finalError = err;
-            if (currentGroqState) handleGroqError(currentGroqState, err);
-          }
-        }
-      }
-
-      if (provider === "openrouter") {
-        try {
-          const { key, state } = getOpenRouterKey();
-          const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 30000);
-          const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "Authorization": `Bearer ${key}`
-            },
-            body: JSON.stringify({
-              model: "meta-llama/llama-3.3-70b-instruct",
-              messages: [
-                 ...(config.systemInstruction ? [{ role: "system", content: config.systemInstruction }] : []),
-                 { role: "user", content: promptText }
-              ],
-              temperature: config.temperature ?? 0.3,
-              ...(isJsonMode ? { response_format: { type: "json_object" } } : {})
-            }),
-            signal: controller.signal
-          });
-          clearTimeout(timeoutId);
-          if (res.ok) {
-            const data = await res.json();
-            const text = data?.choices?.[0]?.message?.content || "";
-            if (text) return text;
-          }
-        } catch (err: any) {
-          finalError = err;
-        }
-      }
-    } catch (e: any) {
+      } catch (e: any) {
       console.warn(`[${provider}] Unhandled error:`, e?.message);
     }
   }
@@ -1599,7 +1529,7 @@ QUY TẮC NGHIÊM NGẶT CẦN TUÂN THỦ:
 Nội dung thẻ gốc cần định dạng:
 ${text}`;
 
-      let responseText = await executeGenerateContentRoundRobin(prompt);
+      let responseText = await executeGenerateContentRoundRobin(prompt, { byokKey: req?.headers["x-cerebras-key"] || req?.headers["x-byok-key"] || (req?.headers["authorization"] || "").replace("Bearer ","") });
       
       // Clean up potential markdown blocks if AI accidentally added them
       if (responseText.startsWith("\`\`\`") && responseText.endsWith("\`\`\`")) {
@@ -1642,7 +1572,7 @@ QUY TẮC NGHIÊM NGẶT CẦN TUÂN THỦ:
 Mảng văn bản gốc cần định dạng (JSON format):
 ${JSON.stringify(texts)}`;
 
-      let responseText = await executeGenerateContentRoundRobin(prompt);
+      let responseText = await executeGenerateContentRoundRobin(prompt, { byokKey: req?.headers["x-cerebras-key"] || req?.headers["x-byok-key"] || (req?.headers["authorization"] || "").replace("Bearer ","") });
       
       // Clean up potential markdown blocks if AI accidentally added them
       if (responseText.startsWith("```") && responseText.endsWith("```")) {
@@ -1708,7 +1638,7 @@ Bọc công thức Toán/Lý/Hóa bằng LaTeX (dấu $ hoặc $$). Chỉ trả 
 
       let responseText = "";
       try {
-        responseText = await executeGenerateContentRoundRobin(prompt);
+        responseText = await executeGenerateContentRoundRobin(prompt, { byokKey: req?.headers["x-cerebras-key"] || req?.headers["x-byok-key"] || (req?.headers["authorization"] || "").replace("Bearer ","") });
       } catch (geminiError: any) {
         throw geminiError;
       }
@@ -1751,10 +1681,10 @@ BẮT BUỘC ĐỊNH DẠNG: Chỉ trả về ĐÚNG MỘT MẢNG JSON duy nhấ
   }
 ]`;
 
-      const responseText = await executeGenerateContentRoundRobin(prompt, {
+      const responseText = await executeGenerateContentRoundRobin(prompt, Object.assign({}, {
          responseMimeType: "application/json",
          temperature: 0.3
-      });
+      }, { byokKey: req?.headers["x-cerebras-key"] || req?.headers["x-byok-key"] || (req?.headers["authorization"] || "").replace("Bearer ","") }));
 
       res.json({ result: responseText });
     } catch (error) {
@@ -1852,7 +1782,7 @@ ${chunkWords.join("\n")}`;
          
          while (retryAttempts < 3 && !parseSuccess) {
             try {
-               const chunkResText = await executeGenerateContentRoundRobin(prompt, { temperature: 0.1 });
+               const chunkResText = await executeGenerateContentRoundRobin(prompt, Object.assign({}, { temperature: 0.1 }, { byokKey: req?.headers["x-cerebras-key"] || req?.headers["x-byok-key"] || (req?.headers["authorization"] || "").replace("Bearer ","") }));
                
                const chunkJsonText = chunkResText.replace(/```(?:json)?/g, "").trim();
                let chunkArr;
@@ -2052,7 +1982,7 @@ ${chunkWords.join("\n")}`;
 
       while (retryAttempts < 3) {
          try {
-            const chunkResText = await executeGenerateContentRoundRobin(prompt, { temperature: 0.1 });
+            const chunkResText = await executeGenerateContentRoundRobin(prompt, Object.assign({}, { temperature: 0.1 }, { byokKey: req?.headers["x-cerebras-key"] || req?.headers["x-byok-key"] || (req?.headers["authorization"] || "").replace("Bearer ","") }));
             
             const chunkJsonText = chunkResText.replace(/```(?:json)?/g, "").trim();
             try {
@@ -2117,10 +2047,10 @@ KHÔNG sử dụng Markdown code block. TRẢ VỀ ĐÚNG MỘT OBJECT JSON DUY 
 
       let responseText = "";
       try {
-        responseText = await executeGenerateContentRoundRobin(prompt, {
+        responseText = await executeGenerateContentRoundRobin(prompt, Object.assign({}, {
            responseMimeType: "application/json",
            temperature: 0.3
-        });
+        }, { byokKey: req?.headers["x-cerebras-key"] || req?.headers["x-byok-key"] || (req?.headers["authorization"] || "").replace("Bearer ","") }));
       } catch (geminiError: any) {
         throw geminiError;
       }
@@ -2148,9 +2078,9 @@ ${text}`;
 
       let responseText = "";
       try {
-        responseText = await executeGenerateContentRoundRobin(prompt, {
+        responseText = await executeGenerateContentRoundRobin(prompt, Object.assign({}, {
            temperature: 0.3
-        });
+        }, { byokKey: req?.headers["x-cerebras-key"] || req?.headers["x-byok-key"] || (req?.headers["authorization"] || "").replace("Bearer ","") }));
       } catch (geminiError: any) {
         throw geminiError;
       }
@@ -2198,10 +2128,10 @@ BẮT BUỘC TRẢ VỀ ĐÚNG MỘT OBJECT JSON DUY NHẤT (không bọc markdo
   "formattedExample": "Ví dụ đã được định dạng (nếu có)"
 }`;
 
-      const responseText = await executeGenerateContentRoundRobin(prompt, {
+      const responseText = await executeGenerateContentRoundRobin(prompt, Object.assign({}, {
         responseMimeType: "application/json",
         temperature: 0.1
-      });
+      }, { byokKey: req?.headers["x-cerebras-key"] || req?.headers["x-byok-key"] || (req?.headers["authorization"] || "").replace("Bearer ","") }));
 
       let parsed = { formattedFront: front, formattedBack: back, formattedExample: example_sentence };
       try {
@@ -2237,10 +2167,10 @@ BẮT BUỘC TRẢ VỀ ĐÚNG MỘT OBJECT JSON DUY NHẤT (không bọc markdo
 }`;
 
         try {
-          const responseText = await executeGenerateContentRoundRobin(prompt, {
+          const responseText = await executeGenerateContentRoundRobin(prompt, Object.assign({}, {
             responseMimeType: "application/json",
             temperature: 0.2
-          });
+          }, { byokKey: req?.headers["x-cerebras-key"] || req?.headers["x-byok-key"] || (req?.headers["authorization"] || "").replace("Bearer ","") }));
           return res.json({ result: responseText });
         } catch (err: any) {
           console.error("Prompt Builder Error:", err);
@@ -2380,9 +2310,9 @@ ${conciseModeGuidance}`;
             
             let responseText = "";
             try {
-              responseText = await executeGenerateContentRoundRobin(mcqPrompt, {
+              responseText = await executeGenerateContentRoundRobin(mcqPrompt, Object.assign({}, {
                  responseMimeType: "application/json"
-              });
+              }, { byokKey: req?.headers["x-cerebras-key"] || req?.headers["x-byok-key"] || (req?.headers["authorization"] || "").replace("Bearer ","") }));
             } catch (geminiError: any) {
               throw geminiError;
             }
@@ -2456,12 +2386,12 @@ ${reminderSuffix}`;
 
         const aiModelToUse = req.body.useProModel ? "gemini-1.5-pro" : "gemini-3.6-flash";
 
-        responseText = await executeGenerateContentRoundRobin(contents, {
+        responseText = await executeGenerateContentRoundRobin(contents, Object.assign({}, {
             systemInstruction: systemPrompt,
             temperature: responseMode === "direct" && responseStyle !== "detailed" ? 0.3 : 0.8,
             maxOutputTokens: maxTokens,
             model: aiModelToUse
-        });
+        }, { byokKey: req?.headers["x-cerebras-key"] || req?.headers["x-byok-key"] || (req?.headers["authorization"] || "").replace("Bearer ","") }));
       } catch (geminiError: any) {
          throw geminiError;
       }
@@ -3494,10 +3424,10 @@ ${textChunk}`;
 
         const activePrompt = isJsonMode ? (isDegraded ? jsonDegradedPrompt : jsonNormalPrompt) : exactLinePrompt;
 
-        const responseTextObj = await executeGenerateContentRoundRobin(activePrompt, {
+        const responseTextObj = await executeGenerateContentRoundRobin(activePrompt, Object.assign({}, {
           responseMimeType: isJsonMode ? "application/json" : "text/plain",
           temperature: 0.1
-        });
+        }, { byokKey: req?.headers["x-cerebras-key"] || req?.headers["x-byok-key"] || (req?.headers["authorization"] || "").replace("Bearer ","") }));
 
         responseText = "";
         if (typeof responseTextObj === "string") {
@@ -3774,10 +3704,10 @@ Return ONLY a minified JSON object with these EXACT keys:
 
 Do not include any markdown wrapper or extra text.`;
 
-      const responseText = await executeGenerateContentRoundRobin(requestPrompt, {
+      const responseText = await executeGenerateContentRoundRobin(requestPrompt, Object.assign({}, {
          responseMimeType: "application/json",
          temperature: 0.1
-      });
+      }, { byokKey: req?.headers["x-cerebras-key"] || req?.headers["x-byok-key"] || (req?.headers["authorization"] || "").replace("Bearer ","") }));
 
       let cleanText = (responseText as string).trim();
       if (cleanText.startsWith("```json")) {
@@ -3825,7 +3755,7 @@ Trả về dữ liệu dưới dạng JSON chuẩn (không dùng markdown block)
   "wordForm": "Loại từ, phát âm IPA (chỉ áp dụng nếu là tiếng Anh)"
 }`;
 
-      const responseText = await executeGenerateContentRoundRobin(requestPrompt);
+      const responseText = await executeGenerateContentRoundRobin(requestPrompt, { byokKey: req?.headers["x-cerebras-key"] || req?.headers["x-byok-key"] || (req?.headers["authorization"] || "").replace("Bearer ","") });
 
       let parsedData: any = { definition: (responseText as string).trim(), wordForm: wordForm || "" };
       try {
@@ -3878,10 +3808,10 @@ Yêu cầu cực kỳ nghiêm ngặt:
 Dữ liệu đầu vào cần sửa lỗi và đồng bộ:
 ${jsonText}`;
 
-      const responseText = await executeGenerateContentRoundRobin(requestPrompt, {
+      const responseText = await executeGenerateContentRoundRobin(requestPrompt, Object.assign({}, {
          responseMimeType: "application/json",
          temperature: 0.1
-      });
+      }, { byokKey: req?.headers["x-cerebras-key"] || req?.headers["x-byok-key"] || (req?.headers["authorization"] || "").replace("Bearer ","") }));
 
       let cleanText = (responseText as string).trim();
       if (cleanText.startsWith("```json")) {
@@ -4151,12 +4081,12 @@ Ví dụ:
 Hãy trả về TRỰC TIẾP đoạn prompt đó, không giải thích, không bọc trong markdown block. Giữ nó ngắn gọn (khoảng 2-4 câu), sắc bén và tập trung vào phong cách/yêu cầu.`;
 
       const contents = [{ role: "user", parts: [{ text: `Mô tả nhãn/phong cách người dùng muốn tạo: ${description}` }] }];
-      const responseText = await executeGenerateContentRoundRobin(contents, {
+      const responseText = await executeGenerateContentRoundRobin(contents, Object.assign({}, {
         systemInstruction,
         temperature: 0.7,
         maxOutputTokens: 300,
         model: "gemini-3.6-flash"
-      });
+      }, { byokKey: req?.headers["x-cerebras-key"] || req?.headers["x-byok-key"] || (req?.headers["authorization"] || "").replace("Bearer ","") }));
 
       res.json({ success: true, prompt: responseText.trim() });
     } catch (err: any) {
@@ -4196,7 +4126,8 @@ Hãy trả về TRỰC TIẾP đoạn prompt đó, không giải thích, không 
       }
 
       if (!matchedState) {
-        return res.status(404).json({ error: `Key not found on server pool for provider: ${provider}` });
+        // BYOK keys won't be in the server pool, just acknowledge sync
+        return res.json({ success: true, message: "BYOK key usage noted." });
       }
 
       // Update in-memory

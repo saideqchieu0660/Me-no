@@ -1,3 +1,4 @@
+import { VibeRescueButton } from "./components/VibeRescueButton";
 import CerebrasUsageChart from './CerebrasUsageChart';
 import { VibeSyncEngine } from "./sync/VibeSyncEngine";
 import { useLiveVibeDecks } from "./sync/useLiveVibeDecks";
