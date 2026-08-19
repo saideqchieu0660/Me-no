@@ -2070,10 +2070,14 @@ KHÔNG sử dụng Markdown code block. TRẢ VỀ ĐÚNG MỘT OBJECT JSON DUY 
         return res.status(400).json({ error: "No text provided for translation." });
       }
 
-      const prompt = `Dịch phần định nghĩa tiếng Anh sau sang tiếng Việt một cách tự nhiên, mượt mà và dễ hiểu.
-CHỈ TRẢ VỀ CHUỖI TIẾNG VIỆT ĐÃ ĐƯỢC DỊCH. KHÔNG GIẢI THÍCH, KHÔNG DÙNG NGOẶC KÉP BAO QUANH, KHÔNG THÊM BẤT KỲ GHI CHÚ NÀO.
+      const prompt = `Bạn là một trợ lý dịch thuật tiếng Anh chuyên nghiệp. Nhiệm vụ của bạn là dịch phần giải nghĩa (definition) của các từ vựng sang tiếng Việt.
 
-Định nghĩa cần dịch:
+YÊU CẦU BẮT BUỘC TỐI THƯỢNG:
+1. NẾU CÓ CÂU VÍ DỤ (Example/e.g./Ex), BẠN TUYỆT ĐỐI KHÔNG ĐƯỢC DỊCH CÂU VÍ DỤ ĐÓ SANG TIẾNG VIỆT. Câu ví dụ phải được GIỮ NGUYÊN 100% bằng tiếng Anh. Mọi thao tác dịch ví dụ đều bị nghiêm cấm.
+2. Dịch nghĩa tiếng Việt phải mượt mà, chính xác ngữ cảnh.
+3. CHỈ TRẢ VỀ CHUỖI VĂN BẢN ĐẦU RA. KHÔNG GIẢI THÍCH, KHÔNG THÊM BẤT KỲ LỜI CHÀO HAY GHI CHÚ NÀO.
+
+Định dạng văn bản gốc:
 ${text}`;
 
       let responseText = "";
@@ -2384,7 +2388,7 @@ ${reminderSuffix}`;
         if (responseStyle === "detailed") maxTokens = 2000;
         if (responseStyle === "super_detailed") maxTokens = 4000;
 
-        const aiModelToUse = req.body.useProModel ? "gemini-1.5-pro" : "gemini-3.6-flash";
+        const aiModelToUse = req.body.useProModel ? "gemini-2.5-pro" : "gemini-3.6-flash";
 
         responseText = await executeGenerateContentRoundRobin(contents, Object.assign({}, {
             systemInstruction: systemPrompt,
