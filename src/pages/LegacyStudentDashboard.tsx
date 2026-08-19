@@ -681,7 +681,8 @@ export default function LegacyStudentDashboard() {
     if (unsubDecksRef.current) unsubDecksRef.current();
 
     try {
-      const q = query(collection(db, "decks"), where("ownerId", "==", user.id));
+      // Limit fetching to recent 100 decks to prevent unbounded reads
+      const q = query(collection(db, "decks"), where("ownerId", "==", user.id), limit(100));
       const fetchDecks = async () => {
         try {
           const snapshot = await getDocs(q);
@@ -712,10 +713,14 @@ export default function LegacyStudentDashboard() {
     try {
       const fetchCardStates = async () => {
         try {
-          const snapshot = await getDocs(collection(db, "users", user.id, "cardsState"));
+          const snapshot = await getDocs(collection(db, "users", user.id, "vibe_deckStates"));
           const states: any[] = [];
           snapshot.forEach((docSnap) => {
-            states.push({ id: docSnap.id, ...docSnap.data() });
+            const data = docSnap.data();
+            const deckStates = data.states || {};
+            Object.entries(deckStates).forEach(([cardId, stateData]: [string, any]) => {
+               states.push({ id: cardId, ...stateData });
+            });
           });
           setPersonalCardStates(states);
         } catch (err) {

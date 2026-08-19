@@ -857,11 +857,22 @@ export const store = {
               "deck_1", "deck_phil_2", "deck_math_1", "deck_math_2", "deck_physics_1", "deck_physics_2", "deck_test_ui", "deck_formatting_test", "deck_test_50"
             ];
             const extraSystemDecks = [];
-            for (const sysId of systemDecksList) {
-               try {
-                  const docSnap = await getDoc(doc(db, "sets", sysId));
-                  if (docSnap.exists()) extraSystemDecks.push(docSnap.data());
-               } catch(e) {}
+            try {
+               // Optimization: Fetch all system decks in one read using where("id", "in", ...)
+               // We might need to split into chunks of 10 if systemDecksList > 10, but here it's 9.
+               const qSys = query(setsCol, where("id", "in", systemDecksList));
+               const sysSnap = await getDocs(qSys);
+               sysSnap.forEach(d => {
+                  extraSystemDecks.push(d.data());
+               });
+            } catch(e) {
+               console.warn("Failed to fetch system decks via in query, falling back to sequential", e);
+               for (const sysId of systemDecksList) {
+                  try {
+                     const docSnap = await getDoc(doc(db, "sets", sysId));
+                     if (docSnap.exists()) extraSystemDecks.push(docSnap.data());
+                  } catch(e) {}
+               }
             }
 
             const fbDecks: Deck[] = [];
@@ -1493,7 +1504,7 @@ export const store = {
          };
 
          import('../vibe-sandbox/sync/VibeSyncEngine').then(({ VibeSyncEngine }) => {
-            VibeSyncEngine.updateCardState(currentUser!.id, card.id, payload).catch(err => console.warn("Queue ignored:", err));
+            VibeSyncEngine.updateCardState(currentUser!.id, deck.id, card.id, payload).catch(err => console.warn("Queue ignored:", err));
          }).catch(e => console.error("VibeSync CardState enqueue error:", e));
          
          if (currentUser) {

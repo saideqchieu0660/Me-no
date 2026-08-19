@@ -159,11 +159,17 @@ export const dbService = {
     const userDocRef = doc(db, `users/${uid}`);
     await withTimeout(deleteDoc(userDocRef), 5000, null);
 
-    // 2. Delete card states subcollection docs
+    // 2. Delete card states and deck states subcollection docs
     const cardStatesCol = collection(db, `users/${uid}/cardsState`);
     const cardStatesSnap = await withTimeout(getDocs(cardStatesCol), 5000, { docs: [] } as any);
     for (const cardDoc of cardStatesSnap.docs) {
       await withTimeout(deleteDoc(doc(db, `users/${uid}/cardsState/${cardDoc.id}`)), 5000, null);
+    }
+    
+    const deckStatesCol = collection(db, `users/${uid}/vibe_deckStates`);
+    const deckStatesSnap = await withTimeout(getDocs(deckStatesCol), 5000, { docs: [] } as any);
+    for (const deckDoc of deckStatesSnap.docs) {
+      await withTimeout(deleteDoc(doc(db, `users/${uid}/vibe_deckStates/${deckDoc.id}`)), 5000, null);
     }
 
     // 3. Remove user from all study groups' members lists

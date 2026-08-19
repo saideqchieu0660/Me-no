@@ -501,10 +501,14 @@ export default function LegacyStudyRoom() {
           const fetchCardStates = async () => {
             try {
               const { getDocs } = await import("firebase/firestore");
-              const snapshot = await getDocs(collection(db, "users", user.id, "cardsState"));
+              const snapshot = await getDocs(collection(db, "users", user.id, "vibe_deckStates"));
               const states: any[] = [];
               snapshot.forEach((docSnap) => {
-                states.push({ id: docSnap.id, ...docSnap.data() });
+                const data = docSnap.data();
+                const deckStates = data.states || {};
+                Object.entries(deckStates).forEach(([cardId, stateData]: [string, any]) => {
+                   states.push({ id: cardId, ...stateData });
+                });
               });
               setPersonalCardStates(states);
             } catch (err) {

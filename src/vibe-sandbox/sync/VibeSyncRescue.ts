@@ -137,9 +137,17 @@ export async function forceMergeRescue(): Promise<string> {
     batch.set(pRef, mergedProfile, { merge: true });
     batchCount++;
 
+    const deckStatesToBatch: Record<string, Record<string, any>> = {};
     for (const [cId, state] of Object.entries(mergedCardStates)) {
-       const ref = doc(db, "users", uid, "cardsState", cId);
-       batch.set(ref, state, { merge: true });
+       const s: any = state;
+       const dId = s.deckId || "legacy_migrated_rescue";
+       if (!deckStatesToBatch[dId]) deckStatesToBatch[dId] = {};
+       deckStatesToBatch[dId][cId] = state;
+    }
+    
+    for (const [dId, states] of Object.entries(deckStatesToBatch)) {
+       const ref = doc(db, "users", uid, "vibe_deckStates", dId);
+       batch.set(ref, { states, deckId: dId, lastUpdatedAt: Date.now() }, { merge: true });
        batchCount++;
        if (batchCount >= 450) { // Firestore limit là 500
           await batch.commit();

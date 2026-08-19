@@ -151,8 +151,17 @@ class SyncEngineClass {
             const profileRef = doc(db, "users", item.payload.id);
             batch.set(profileRef, { ...item.payload, lastUpdatedAt: item.timestamp }, { merge: true });
           } else if (item.type === "UPSERT_CARD_STATE") {
-            const cardStateRef = doc(db, "users", item.payload.uid, "cardsState", item.payload.cardId);
-            batch.set(cardStateRef, { ...item.payload, lastUpdatedAt: item.timestamp }, { merge: true });
+            if (item.payload.deckId) {
+               const deckStateRef = doc(db, "users", item.payload.uid, "vibe_deckStates", item.payload.deckId);
+               batch.set(deckStateRef, { 
+                 [`states.${item.payload.cardId}`]: { ...item.payload, lastUpdatedAt: item.timestamp },
+                 lastUpdatedAt: item.timestamp,
+                 deckId: item.payload.deckId
+               }, { merge: true });
+            } else {
+               const cardStateRef = doc(db, "users", item.payload.uid, "cardsState", item.payload.cardId);
+               batch.set(cardStateRef, { ...item.payload, lastUpdatedAt: item.timestamp }, { merge: true });
+            }
           } else if (item.type === "INCREMENT_PROFILE") {
             const profileRef = doc(db, "users", item.payload.id);
             const incrementData: any = { lastUpdatedAt: item.timestamp };
@@ -306,64 +315,73 @@ class SyncEngineClass {
     });
     this.unsubscribers.push(unsubscribeProfile);
 
-    // 3. Listen to Cards State (Critical Fix for sync conflict)
-    const cardsStateRef = collection(db, "users", uid, "cardsState");
-    const unsubscribeCardsState = onSnapshot(cardsStateRef, async (snapshot) => {
+    // 3. Listen to Deck States (Replaces Cards State to reduce reads)
+    const deckStatesRef = collection(db, "users", uid, "vibe_deckStates");
+    const unsubscribeDeckStates = onSnapshot(deckStatesRef, async (snapshot) => {
       let hasChanges = false;
+      const updatedStatesToDispatch: any[] = [];
+      
       for (const change of snapshot.docChanges()) {
-        const stateData: any = { cardId: change.doc.id, ...change.doc.data() };
+        const deckStateDoc = change.doc.data();
+        const deckId = change.doc.id;
+        const states = deckStateDoc.states || {};
         
         if (change.type === "added" || change.type === "modified") {
-          try {
-            const local = await get(`vibe_cardstate_${uid}_${stateData.cardId}`) as any;
+          for (const [cardId, stateData] of Object.entries(states)) {
+            const cardStateData: any = { cardId, deckId, ...(stateData as any) };
             
-            let shouldUpdateLocal = false;
-            let shouldPushLocal = false;
+            try {
+              const local = await get(`vibe_cardstate_${uid}_${cardId}`) as any;
+              
+              let shouldUpdateLocal = false;
+              let shouldPushLocal = false;
 
-            const remoteTime = stateData.lastUpdatedAt || 0;
-            const localTime = local?.lastUpdatedAt || 0;
+              const remoteTime = cardStateData.lastUpdatedAt || 0;
+              const localTime = local?.lastUpdatedAt || 0;
 
-            if (!local) {
-               shouldUpdateLocal = true;
-            } else if (remoteTime > localTime) {
-               shouldUpdateLocal = true;
-            } else if (localTime > remoteTime) {
-               shouldPushLocal = true;
-            }
+              if (!local) {
+                 shouldUpdateLocal = true;
+              } else if (remoteTime > localTime) {
+                 shouldUpdateLocal = true;
+              } else if (localTime > remoteTime) {
+                 shouldPushLocal = true;
+              }
 
-            if (shouldUpdateLocal) {
-               await set(`vibe_cardstate_${uid}_${stateData.cardId}`, stateData);
-               try {
-                 const { CardStateManager } = await import("../../lib/CardStateManager");
-                 await CardStateManager.updateCardState(uid, stateData.cardId, stateData);
-               } catch (err) {
-                 console.warn("[VibeSyncEngine] CardStateManager update error:", err);
-               }
-               hasChanges = true;
-               
-               if (typeof window !== "undefined") {
-                 window.dispatchEvent(
-                   new CustomEvent("vibe-card-states-updated", {
-                     detail: {
-                       states: [{ ...stateData, id: stateData.cardId }],
-                     },
-                   })
-                 );
-               }
-            }
-            
-            if (shouldPushLocal) {
-               this.enqueueChange({ type: "UPSERT_CARD_STATE", payload: local });
-            }
-            
-          } catch (e) { console.warn(e); }
+              if (shouldUpdateLocal) {
+                 await set(`vibe_cardstate_${uid}_${cardId}`, cardStateData);
+                 try {
+                   const { CardStateManager } = await import("../../lib/CardStateManager");
+                   await CardStateManager.updateCardState(uid, cardId, cardStateData);
+                 } catch (err) {
+                   console.warn("[VibeSyncEngine] CardStateManager update error:", err);
+                 }
+                 hasChanges = true;
+                 updatedStatesToDispatch.push({ ...cardStateData, id: cardId });
+              }
+              
+              if (shouldPushLocal) {
+                 this.enqueueChange({ type: "UPSERT_CARD_STATE", payload: local });
+              }
+              
+            } catch (e) { console.warn(e); }
+          }
         }
       }
-      if (hasChanges) this.notify();
+      
+      if (hasChanges && typeof window !== "undefined" && updatedStatesToDispatch.length > 0) {
+        window.dispatchEvent(
+          new CustomEvent("vibe-card-states-updated", {
+            detail: {
+              states: updatedStatesToDispatch,
+            },
+          })
+        );
+        this.notify();
+      }
     }, (error) => {
-      console.error("[VibeSyncEngine] Realtime cardsState error:", error);
+      console.error("[VibeSyncEngine] Realtime deckStates error:", error);
     });
-    this.unsubscribers.push(unsubscribeCardsState);
+    this.unsubscribers.push(unsubscribeDeckStates);
   }
 
   stopRealtimeSync() {
@@ -566,9 +584,9 @@ class SyncEngineClass {
     }
   }
 
-  async updateCardState(uid: string, cardId: string, statePayload: any) {
+  async updateCardState(uid: string, deckId: string, cardId: string, statePayload: any) {
     const timestamp = Date.now();
-    const merged = { ...statePayload, uid, cardId, lastUpdatedAt: timestamp };
+    const merged = { ...statePayload, uid, deckId, cardId, lastUpdatedAt: timestamp };
     
     // Cache the state locally so it can be merged if offline
     try {

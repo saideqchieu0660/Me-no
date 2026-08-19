@@ -506,8 +506,8 @@ export default function TeacherDashboard() {
         const { db, FirebaseListenerManager } = await import("../lib/firebase");
         const { collection, onSnapshot } = await import("firebase/firestore");
         if (!isMounted) return;
-        const { query, where } = await import("firebase/firestore");
-        const qSets = query(collection(db, "sets"), where("createdBy", "==", user?.id));
+        const { query, where, limit } = await import("firebase/firestore");
+        const qSets = query(collection(db, "sets"), where("createdBy", "==", user?.id), limit(100));
         
         try {
           const { getDocs } = await import("firebase/firestore");

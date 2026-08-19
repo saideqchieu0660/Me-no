@@ -219,36 +219,81 @@ class CardStateManagerClass {
       } catch(e) {}
     }
 
-    // 2. Read Firestore cardsState
+    // 2. Read Firestore vibe_deckStates
     // We only try to read if navigator.onLine is true or we are in a test environment
     if (typeof navigator !== 'undefined' && navigator.onLine !== false) {
       try {
         const lastSyncKey = `vibe_fs_last_sync_${userId}`;
         const lastSync = (await idbGet<number>(lastSyncKey)) || 0;
         
-        const colRef = collection(db, `users/${userId}/cardsState`);
-        const q = lastSync > 0 ? query(colRef, where("updatedAt", ">", lastSync)) : colRef;
+        const deckStatesCol = collection(db, `users/${userId}/vibe_deckStates`);
+        const qDeckStates = lastSync > 0 ? query(deckStatesCol, where("lastUpdatedAt", ">", lastSync)) : deckStatesCol;
+        const deckStatesSnap = await fsGetDocs(qDeckStates);
         
-        const snapshot = await fsGetDocs(q);
-        
-        snapshot.forEach((docSnap: any) => {
-          const cloudData = docSnap.data();
-          const cardId = docSnap.id;
-          const ts = cloudData.updatedAt ? new Date(cloudData.updatedAt).getTime() : 0;
-          
-          if (!isNaN(ts)) {
-            // Note: need to wait inside loop or collect promises
-            updateIfNewer(cardId, {
-              mastery: cloudData.mastery,
-              isHard: cloudData.isWeakCard,
-              repetitionCount: cloudData.repetitionCount,
-              interval: cloudData.interval,
-              easeFactor: cloudData.easeFactor,
-              nextReviewDate: cloudData.nextReviewDate,
-              lastPointAwarded: cloudData.lastPointAwarded
-            }, ts);
-          }
-        });
+        if (deckStatesSnap.empty && lastSync === 0) {
+           // Migration from cardsState to vibe_deckStates
+           const legacyCol = collection(db, `users/${userId}/cardsState`);
+           const legacySnap = await fsGetDocs(legacyCol);
+           if (!legacySnap.empty) {
+               const statesMap: any = {};
+               legacySnap.forEach((d: any) => {
+                  const data = d.data();
+                  statesMap[d.id] = { cardId: d.id, ...data, updatedAt: data.updatedAt || Date.now() };
+               });
+               
+               const entries = Object.entries(statesMap);
+               const CHUNK_SIZE = 1000;
+               const { setDoc, doc } = await import("firebase/firestore");
+               for (let i = 0; i < entries.length; i += CHUNK_SIZE) {
+                  const chunk = entries.slice(i, i + CHUNK_SIZE);
+                  const chunkMap = Object.fromEntries(chunk);
+                  const chunkDocId = `legacy_migrated_${i / CHUNK_SIZE}`;
+                  try {
+                    await setDoc(doc(db, `users/${userId}/vibe_deckStates`, chunkDocId), {
+                        deckId: chunkDocId,
+                        states: chunkMap,
+                        lastUpdatedAt: Date.now()
+                    });
+                  } catch (e) {
+                    console.warn("Migration chunk failed:", e);
+                  }
+               }
+               
+               for (const [cardId, cloudData] of Object.entries<any>(statesMap)) {
+                 const ts = cloudData.updatedAt ? new Date(cloudData.updatedAt).getTime() : 0;
+                 if (!isNaN(ts)) {
+                   updateIfNewer(cardId, {
+                     mastery: cloudData.mastery,
+                     isHard: cloudData.isWeakCard,
+                     repetitionCount: cloudData.repetitionCount,
+                     interval: cloudData.interval,
+                     easeFactor: cloudData.easeFactor,
+                     nextReviewDate: cloudData.nextReviewDate,
+                     lastPointAwarded: cloudData.lastPointAwarded
+                   }, ts);
+                 }
+               }
+           }
+        } else {
+           deckStatesSnap.forEach((docSnap: any) => {
+             const cloudData = docSnap.data();
+             const deckStates = cloudData.states || {};
+             Object.entries(deckStates).forEach(([cardId, stateData]: [string, any]) => {
+                const ts = stateData.updatedAt || stateData.lastUpdatedAt || 0;
+                if (!isNaN(ts)) {
+                  updateIfNewer(cardId, {
+                    mastery: stateData.mastery,
+                    isHard: stateData.isWeakCard || stateData.isHard,
+                    repetitionCount: stateData.repetitionCount,
+                    interval: stateData.interval,
+                    easeFactor: stateData.easeFactor,
+                    nextReviewDate: stateData.nextReviewDate,
+                    lastPointAwarded: stateData.lastPointAwarded
+                  }, ts);
+                }
+             });
+           });
+        }
         
         // Update sync timestamp (minus 5s to prevent edge case missed updates)
         await idbSet(lastSyncKey, Date.now() - 5000);
