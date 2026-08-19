@@ -1133,7 +1133,7 @@ async function executeGenerateContentRoundRobin(contents: any, config: any = {})
   }
   
   let activeProviders: string[] = [];
-  if (geminiKeyStates.length > 0 || process.env.GEMINI_API_KEY) activeProviders.push("gemini");
+  if (geminiKeyStates.length > 0 || process.env.GEMINI_API_KEY || process.env.GEMINI_API_KEY_1 || process.env.VITE_GEMINI_API_KEY) activeProviders.push("gemini");
 
   if (activeProviders.length === 0) {
     throw new Error("Tất cả Cổng API đều đã tắt hoặc hết key. Vui lòng bật ít nhất 1 nhà cung cấp.");
@@ -4057,7 +4057,7 @@ ${jsonText}`;
       const db = admin.firestore();
       const snapshot = await db.collection("vibe_api_usage_logs")
         .where("provider", "==", "cerebras")
-        .orderBy("timestamp", "desc")
+        
         .limit(1000)
         .get();
         
