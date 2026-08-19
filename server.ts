@@ -2107,13 +2107,12 @@ ${text}`;
 
       const prompt = `Bạn là chuyên gia định dạng trình bày Flashcard (AI Layout Formatter).
 NHIỆM VỤ TỐI THƯỢNG:
-1. TUYỆT ĐỐI KHÔNG paraphrasing, tóm tắt, dịch thuật, hay diễn giải lại bất kỳ từ ngữ nào. Không được thêm nội dung học thuật mới.
-2. CHỈ thay đổi trình bày: Thêm các dấu xuống dòng (\\n) và khoảng cách hợp lý để làm cho nội dung thông thoáng, cực kỳ dễ đọc. Biến các gạch đầu dòng thành dạng danh sách (-).
-3. ĐẶC BIỆT CHÚ Ý TÁC VỤ DỌN DẸP NỘI DUNG RỖNG: 
-   - Rất nhiều thẻ có chứa các tiêu đề hoặc phần tử mang tính cấu trúc bị rỗng (ví dụ: "Nguồn gốc & Bản chất:", "Ví dụ:", "Mẹo nhớ:", hoặc "-") nhưng hoàn toàn không có thông tin hữu ích nào đi kèm.
-   - BẮT BUỘC TÌM VÀ XÓA TOÀN BỘ các dòng, nhãn (label), hoặc tiêu đề trống này. Chỉ giữ lại những mục CÓ NỘI DUNG học tập thực sự. Đừng để lại những dòng kiểu như "Ví dụ:" đứng trơ trọi.
+1. SỬA LỖI CHÍNH TẢ: Tự động rà soát và sửa các lỗi chính tả, lỗi đánh máy có trong văn bản (ví dụ: "bê on the horns of a dilemm" -> "be on the horns of a dilemma"). KHÔNG tóm tắt hay diễn giải lại câu văn, chỉ sửa lỗi chính tả.
+2. LÀM SẠCH MẶT TRƯỚC (FRONT): Ở mặt trước (Front) của thẻ học, TÌM VÀ XÓA BỎ các thông tin dư thừa như Định nghĩa, Giải thích, Đáp án, hoặc Ví dụ (những thông tin này đáng lẽ phải nằm ở mặt sau). Mặt trước CHỈ NÊN chứa Từ vựng chính, Cụm từ, hoặc Câu hỏi. Nếu thông tin bị xóa ở mặt trước mà mặt sau/ví dụ chưa có, hãy tự động di chuyển nó sang \`formattedBack\` hoặc \`formattedExample\` tương ứng để không bị mất dữ liệu học tập.
+3. CHỈ THAY ĐỔI TRÌNH BÀY: Thêm các dấu xuống dòng (\\n) và khoảng cách hợp lý để làm cho nội dung thông thoáng, cực kỳ dễ đọc. Biến các gạch đầu dòng thành dạng danh sách (-). Đối với các câu hỏi trắc nghiệm: Tách riêng mỗi lựa chọn đáp án ra một dòng riêng biệt.
+4. ĐẶC BIỆT CHÚ Ý TÁC VỤ DỌN DẸP NỘI DUNG RỖNG: 
+   - BẮT BUỘC TÌM VÀ XÓA TOÀN BỘ các dòng, nhãn (label), hoặc tiêu đề trống này (ví dụ: "Nguồn gốc:", "Ví dụ:", "Mẹo nhớ:"). Chỉ giữ lại những mục CÓ NỘI DUNG học tập thực sự.
    - Nếu toàn bộ một mặt thẻ (VD mặt Example) chỉ chứa chữ "Ví dụ: " hoặc không có nội dung, hãy biến nó thành chuỗi rỗng "".
-4. Đối với các câu hỏi trắc nghiệm: Tách riêng mỗi lựa chọn đáp án ra một dòng riêng biệt.
 
 Nội dung thẻ cần định dạng:
 --- FRONT ---
