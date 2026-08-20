@@ -1106,6 +1106,10 @@ async function getCerebrasModel(): Promise<string> {
   return cachedCerebrasModel;
 }
 
+const COOLDOWN_MS = 60 * 1000;
+const providerCooldowns: Record<string, number> = { gemini: 0, groq: 0 };
+let globalRoundRobinCounter = 0;
+
 async function executeGenerateContentRoundRobin(contents: any, config: any = {}): Promise<string> {
   const isJsonMode = config.responseMimeType === "application/json";
   
@@ -1132,7 +1136,34 @@ async function executeGenerateContentRoundRobin(contents: any, config: any = {})
     }
   }
   
-  let activeProviders: string[] = ["gemini"];
+  const hasGeminiKey = !!config.byokKey || !!process.env.GEMINI_API_KEY;
+  const hasGroqKey = !!config.groqKey || !!process.env.GROQ_API_KEY;
+  
+  const now = Date.now();
+  const hasGemini = hasGeminiKey && (now > providerCooldowns.gemini);
+  const hasGroq = hasGroqKey && (now > providerCooldowns.groq);
+  
+  let activeProviders: string[] = [];
+  if (hasGemini && hasGroq) {
+     globalRoundRobinCounter++;
+     if (globalRoundRobinCounter % 2 === 0) {
+        activeProviders = ["gemini", "groq"];
+     } else {
+        activeProviders = ["groq", "gemini"];
+     }
+  } else if (hasGroq) {
+     activeProviders = ["groq"];
+  } else if (hasGemini) {
+     activeProviders = ["gemini"];
+  } else {
+     if (hasGeminiKey && hasGroqKey) {
+        activeProviders = ["gemini", "groq"];
+     } else if (hasGroqKey) {
+        activeProviders = ["groq"];
+     } else {
+        activeProviders = ["gemini"];
+     }
+  }
 
   let finalError: any = null;
 
@@ -1165,7 +1196,7 @@ async function executeGenerateContentRoundRobin(contents: any, config: any = {})
              state = clientInfo.state;
           }
           const response = await ai.models.generateContent({
-            model: config.model || "gemini-2.5-flash",
+            model: config.model || "gemini-2.5-flash-lite",
             contents: promptText,
             config: {
               ...(config.systemInstruction ? { systemInstruction: config.systemInstruction } : {}),
@@ -1177,12 +1208,59 @@ async function executeGenerateContentRoundRobin(contents: any, config: any = {})
           const text = response?.text || response?.response?.text?.() || "";
           if (text) return text;
         } catch (err: any) {
-          console.warn("[gemini] Provider failed, trying fallback...", err?.message);
+          const errMsg = (err?.message || "").toLowerCase();
+          if (errMsg.includes("429") || errMsg.includes("too many") || errMsg.includes("quota") || errMsg.includes("overloaded") || errMsg.includes("503") || errMsg.includes("500") || errMsg.includes("504")) {
+             console.warn("[gemini] Rate limit/Overload detected. Triggering 1-minute cooldown.");
+             providerCooldowns.gemini = Date.now() + COOLDOWN_MS;
+          } else {
+             console.warn("[gemini] Provider failed, trying fallback...", err?.message);
+          }
+          finalError = err;
+        }
+      } else if (provider === "groq") {
+        try {
+          const groqKeyToUse = config.groqKey || process.env.GROQ_API_KEY;
+          const messages = [];
+          if (config.systemInstruction) {
+             messages.push({ role: "system", content: config.systemInstruction });
+          }
+          messages.push({ role: "user", content: promptText });
+          
+          const groqRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+             method: "POST",
+             headers: {
+                "Authorization": `Bearer ${groqKeyToUse}`,
+                "Content-Type": "application/json"
+             },
+             body: JSON.stringify({
+                model: "llama-3.3-70b-versatile",
+                messages: messages,
+                temperature: config.temperature !== undefined ? config.temperature : 0.7,
+                max_completion_tokens: config.maxOutputTokens !== undefined ? config.maxOutputTokens : undefined,
+                response_format: isJsonMode ? { type: "json_object" } : undefined
+             })
+          });
+
+          if (!groqRes.ok) {
+             const errText = await groqRes.text();
+             throw new Error(`Groq API Error: ${groqRes.status} - ${errText}`);
+          }
+
+          const groqData = await groqRes.json();
+          const text = groqData.choices?.[0]?.message?.content || "";
+          if (text) return text;
+        } catch (err: any) {
+          const errMsg = (err?.message || "").toLowerCase();
+          if (errMsg.includes("429") || errMsg.includes("too many") || errMsg.includes("503") || errMsg.includes("500") || errMsg.includes("504") || errMsg.includes("rate limit")) {
+             console.warn("[groq] Rate limit/Overload detected. Triggering 1-minute cooldown.");
+             providerCooldowns.groq = Date.now() + COOLDOWN_MS;
+          } else {
+             console.warn("[groq] Provider failed, trying fallback...", err?.message);
+          }
           finalError = err;
         }
       }
-
-      } catch (e: any) {
+    } catch (e: any) {
       console.warn(`[${provider}] Unhandled error:`, e?.message);
     }
   }
@@ -1529,7 +1607,7 @@ QUY TẮC NGHIÊM NGẶT CẦN TUÂN THỦ:
 Nội dung thẻ gốc cần định dạng:
 ${text}`;
 
-      let responseText = await executeGenerateContentRoundRobin(prompt, { byokKey: req?.headers["x-cerebras-key"] || req?.headers["x-byok-key"] || (req?.headers["authorization"] || "").replace("Bearer ","") });
+      let responseText = await executeGenerateContentRoundRobin(prompt, { byokKey: req?.headers["x-cerebras-key"] || req?.headers["x-byok-key"] || (req?.headers["authorization"] || "").replace("Bearer ",""), groqKey: req?.headers["x-groq-key"] });
       
       // Clean up potential markdown blocks if AI accidentally added them
       if (responseText.startsWith("\`\`\`") && responseText.endsWith("\`\`\`")) {
@@ -1572,7 +1650,7 @@ QUY TẮC NGHIÊM NGẶT CẦN TUÂN THỦ:
 Mảng văn bản gốc cần định dạng (JSON format):
 ${JSON.stringify(texts)}`;
 
-      let responseText = await executeGenerateContentRoundRobin(prompt, { byokKey: req?.headers["x-cerebras-key"] || req?.headers["x-byok-key"] || (req?.headers["authorization"] || "").replace("Bearer ","") });
+      let responseText = await executeGenerateContentRoundRobin(prompt, { byokKey: req?.headers["x-cerebras-key"] || req?.headers["x-byok-key"] || (req?.headers["authorization"] || "").replace("Bearer ",""), groqKey: req?.headers["x-groq-key"] });
       
       // Clean up potential markdown blocks if AI accidentally added them
       if (responseText.startsWith("```") && responseText.endsWith("```")) {
@@ -1638,7 +1716,7 @@ Bọc công thức Toán/Lý/Hóa bằng LaTeX (dấu $ hoặc $$). Chỉ trả 
 
       let responseText = "";
       try {
-        responseText = await executeGenerateContentRoundRobin(prompt, { byokKey: req?.headers["x-cerebras-key"] || req?.headers["x-byok-key"] || (req?.headers["authorization"] || "").replace("Bearer ","") });
+        responseText = await executeGenerateContentRoundRobin(prompt, { byokKey: req?.headers["x-cerebras-key"] || req?.headers["x-byok-key"] || (req?.headers["authorization"] || "").replace("Bearer ",""), groqKey: req?.headers["x-groq-key"] });
       } catch (geminiError: any) {
         throw geminiError;
       }
@@ -1684,7 +1762,7 @@ BẮT BUỘC ĐỊNH DẠNG: Chỉ trả về ĐÚNG MỘT MẢNG JSON duy nhấ
       const responseText = await executeGenerateContentRoundRobin(prompt, Object.assign({}, {
          responseMimeType: "application/json",
          temperature: 0.3
-      }, { byokKey: req?.headers["x-cerebras-key"] || req?.headers["x-byok-key"] || (req?.headers["authorization"] || "").replace("Bearer ","") }));
+      }, { byokKey: req?.headers["x-cerebras-key"] || req?.headers["x-byok-key"] || (req?.headers["authorization"] || "").replace("Bearer ",""), groqKey: req?.headers["x-groq-key"] }));
 
       res.json({ result: responseText });
     } catch (error) {
@@ -1717,7 +1795,7 @@ BẮT BUỘC ĐỊNH DẠNG: Chỉ trả về ĐÚNG MỘT MẢNG JSON duy nhấ
          try {
             const extractRes = await executeGeminiWithRetry(async (ai) => {
                 return await ai.models.generateContent({
-                    model: "gemini-2.5-flash",
+                    model: "gemini-2.5-flash-lite",
                     contents: [
                        { text: "Extract ALL text from this document comprehensively and literally. Do not summarize or explain." },
                        { inlineData: { data: base64Data, mimeType: mimeType || "application/pdf" } }
@@ -1782,7 +1860,7 @@ ${chunkWords.join("\n")}`;
          
          while (retryAttempts < 3 && !parseSuccess) {
             try {
-               const chunkResText = await executeGenerateContentRoundRobin(prompt, Object.assign({}, { temperature: 0.1 }, { byokKey: req?.headers["x-cerebras-key"] || req?.headers["x-byok-key"] || (req?.headers["authorization"] || "").replace("Bearer ","") }));
+               const chunkResText = await executeGenerateContentRoundRobin(prompt, Object.assign({}, { temperature: 0.1 }, { byokKey: req?.headers["x-cerebras-key"] || req?.headers["x-byok-key"] || (req?.headers["authorization"] || "").replace("Bearer ",""), groqKey: req?.headers["x-groq-key"] }));
                
                const chunkJsonText = chunkResText.replace(/```(?:json)?/g, "").trim();
                let chunkArr;
@@ -1915,7 +1993,7 @@ ${chunkWords.join("\n")}`;
          try {
             const extractRes = await executeGeminiWithRetry(async (ai) => {
                 return await ai.models.generateContent({
-                    model: "gemini-2.5-flash",
+                    model: "gemini-2.5-flash-lite",
                     contents: [
                        { text: "Extract ALL text from this document comprehensively and literally. Do not summarize or explain." },
                        { inlineData: { data: finalBase64Data, mimeType: mimeType || "application/pdf" } }
@@ -1956,7 +2034,7 @@ ${chunkWords.join("\n")}`;
       }
 
       const isBackup = provider === "backup";
-      const modelToUse = isBackup ? "gemini-2.5-flash" : "gemini-2.5-flash";
+      const modelToUse = isBackup ? "gemini-2.5-flash-lite" : "gemini-2.5-flash-lite";
       console.log(`[Chunking Log Backend] Bắt đầu xử lý chunk. Provider: ${provider || "primary"} | Model: ${modelToUse} | Số từ/dòng: ${chunkWords.length}`);
 
       const prompt = `[STRICT DETERMINISTIC MODE] Bạn là một cỗ máy biên dịch dữ liệu (Data Compiler).
@@ -1982,7 +2060,7 @@ ${chunkWords.join("\n")}`;
 
       while (retryAttempts < 3) {
          try {
-            const chunkResText = await executeGenerateContentRoundRobin(prompt, Object.assign({}, { temperature: 0.1 }, { byokKey: req?.headers["x-cerebras-key"] || req?.headers["x-byok-key"] || (req?.headers["authorization"] || "").replace("Bearer ","") }));
+            const chunkResText = await executeGenerateContentRoundRobin(prompt, Object.assign({}, { temperature: 0.1 }, { byokKey: req?.headers["x-cerebras-key"] || req?.headers["x-byok-key"] || (req?.headers["authorization"] || "").replace("Bearer ",""), groqKey: req?.headers["x-groq-key"] }));
             
             const chunkJsonText = chunkResText.replace(/```(?:json)?/g, "").trim();
             try {
@@ -2050,7 +2128,7 @@ KHÔNG sử dụng Markdown code block. TRẢ VỀ ĐÚNG MỘT OBJECT JSON DUY 
         responseText = await executeGenerateContentRoundRobin(prompt, Object.assign({}, {
            responseMimeType: "application/json",
            temperature: 0.3
-        }, { byokKey: req?.headers["x-cerebras-key"] || req?.headers["x-byok-key"] || (req?.headers["authorization"] || "").replace("Bearer ","") }));
+        }, { byokKey: req?.headers["x-cerebras-key"] || req?.headers["x-byok-key"] || (req?.headers["authorization"] || "").replace("Bearer ",""), groqKey: req?.headers["x-groq-key"] }));
       } catch (geminiError: any) {
         throw geminiError;
       }
@@ -2084,7 +2162,7 @@ ${text}`;
       try {
         responseText = await executeGenerateContentRoundRobin(prompt, Object.assign({}, {
            temperature: 0.3
-        }, { byokKey: req?.headers["x-cerebras-key"] || req?.headers["x-byok-key"] || (req?.headers["authorization"] || "").replace("Bearer ","") }));
+        }, { byokKey: req?.headers["x-cerebras-key"] || req?.headers["x-byok-key"] || (req?.headers["authorization"] || "").replace("Bearer ",""), groqKey: req?.headers["x-groq-key"] }));
       } catch (geminiError: any) {
         throw geminiError;
       }
@@ -2134,7 +2212,7 @@ BẮT BUỘC TRẢ VỀ ĐÚNG MỘT OBJECT JSON DUY NHẤT (không bọc markdo
       const responseText = await executeGenerateContentRoundRobin(prompt, Object.assign({}, {
         responseMimeType: "application/json",
         temperature: 0.1
-      }, { byokKey: req?.headers["x-cerebras-key"] || req?.headers["x-byok-key"] || (req?.headers["authorization"] || "").replace("Bearer ","") }));
+      }, { byokKey: req?.headers["x-cerebras-key"] || req?.headers["x-byok-key"] || (req?.headers["authorization"] || "").replace("Bearer ",""), groqKey: req?.headers["x-groq-key"] }));
 
       let parsed = { formattedFront: front, formattedBack: back, formattedExample: example_sentence };
       try {
@@ -2173,7 +2251,7 @@ BẮT BUỘC TRẢ VỀ ĐÚNG MỘT OBJECT JSON DUY NHẤT (không bọc markdo
           const responseText = await executeGenerateContentRoundRobin(prompt, Object.assign({}, {
             responseMimeType: "application/json",
             temperature: 0.2
-          }, { byokKey: req?.headers["x-cerebras-key"] || req?.headers["x-byok-key"] || (req?.headers["authorization"] || "").replace("Bearer ","") }));
+          }, { byokKey: req?.headers["x-cerebras-key"] || req?.headers["x-byok-key"] || (req?.headers["authorization"] || "").replace("Bearer ",""), groqKey: req?.headers["x-groq-key"] }));
           return res.json({ result: responseText });
         } catch (err: any) {
           console.error("Prompt Builder Error:", err);
@@ -2315,7 +2393,7 @@ ${conciseModeGuidance}`;
             try {
               responseText = await executeGenerateContentRoundRobin(mcqPrompt, Object.assign({}, {
                  responseMimeType: "application/json"
-              }, { byokKey: req?.headers["x-cerebras-key"] || req?.headers["x-byok-key"] || (req?.headers["authorization"] || "").replace("Bearer ","") }));
+              }, { byokKey: req?.headers["x-cerebras-key"] || req?.headers["x-byok-key"] || (req?.headers["authorization"] || "").replace("Bearer ",""), groqKey: req?.headers["x-groq-key"] }));
             } catch (geminiError: any) {
               throw geminiError;
             }
@@ -2384,14 +2462,14 @@ ${reminderSuffix}`;
       try {
         let maxTokens = 8192;
         // removed maxTokens override due to early truncation bug
-        const aiModelToUse = req.body.useProModel ? "gemini-2.5-pro" : "gemini-2.5-flash";
+        const aiModelToUse = req.body.useProModel ? "gemini-2.5-pro" : "gemini-2.5-flash-lite";
 
         responseText = await executeGenerateContentRoundRobin(contents, Object.assign({}, {
             systemInstruction: systemPrompt,
             temperature: responseMode === "direct" && responseStyle !== "detailed" ? 0.3 : 0.8,
             maxOutputTokens: maxTokens,
             model: aiModelToUse
-        }, { byokKey: req?.headers["x-cerebras-key"] || req?.headers["x-byok-key"] || (req?.headers["authorization"] || "").replace("Bearer ","") }));
+        }, { byokKey: req?.headers["x-cerebras-key"] || req?.headers["x-byok-key"] || (req?.headers["authorization"] || "").replace("Bearer ",""), groqKey: req?.headers["x-groq-key"] }));
       } catch (geminiError: any) {
          throw geminiError;
       }
@@ -2609,7 +2687,7 @@ ${reminderSuffix}`;
       }
 
       const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash",
+        model: "gemini-2.5-flash-lite",
         contents: prompt,
       });
       return response.text;
@@ -3427,7 +3505,7 @@ ${textChunk}`;
         const responseTextObj = await executeGenerateContentRoundRobin(activePrompt, Object.assign({}, {
           responseMimeType: isJsonMode ? "application/json" : "text/plain",
           temperature: 0.1
-        }, { byokKey: req?.headers["x-cerebras-key"] || req?.headers["x-byok-key"] || (req?.headers["authorization"] || "").replace("Bearer ","") }));
+        }, { byokKey: req?.headers["x-cerebras-key"] || req?.headers["x-byok-key"] || (req?.headers["authorization"] || "").replace("Bearer ",""), groqKey: req?.headers["x-groq-key"] }));
 
         responseText = "";
         if (typeof responseTextObj === "string") {
@@ -3632,7 +3710,7 @@ ${textChunk}`;
         const activePrompt = isDegraded ? degradedPrompt : normalPrompt;
 
         const response = await ai.models.generateContent({
-          model: "gemini-2.5-flash",
+          model: "gemini-2.5-flash-lite",
           contents: activePrompt,
           config: {
             responseMimeType: "application/json",
@@ -3707,7 +3785,7 @@ Do not include any markdown wrapper or extra text.`;
       const responseText = await executeGenerateContentRoundRobin(requestPrompt, Object.assign({}, {
          responseMimeType: "application/json",
          temperature: 0.1
-      }, { byokKey: req?.headers["x-cerebras-key"] || req?.headers["x-byok-key"] || (req?.headers["authorization"] || "").replace("Bearer ","") }));
+      }, { byokKey: req?.headers["x-cerebras-key"] || req?.headers["x-byok-key"] || (req?.headers["authorization"] || "").replace("Bearer ",""), groqKey: req?.headers["x-groq-key"] }));
 
       let cleanText = (responseText as string).trim();
       if (cleanText.startsWith("```json")) {
@@ -3755,7 +3833,7 @@ Trả về dữ liệu dưới dạng JSON chuẩn (không dùng markdown block)
   "wordForm": "Loại từ, phát âm IPA (chỉ áp dụng nếu là tiếng Anh)"
 }`;
 
-      const responseText = await executeGenerateContentRoundRobin(requestPrompt, { byokKey: req?.headers["x-cerebras-key"] || req?.headers["x-byok-key"] || (req?.headers["authorization"] || "").replace("Bearer ","") });
+      const responseText = await executeGenerateContentRoundRobin(requestPrompt, { byokKey: req?.headers["x-cerebras-key"] || req?.headers["x-byok-key"] || (req?.headers["authorization"] || "").replace("Bearer ",""), groqKey: req?.headers["x-groq-key"] });
 
       let parsedData: any = { definition: (responseText as string).trim(), wordForm: wordForm || "" };
       try {
@@ -3811,7 +3889,7 @@ ${jsonText}`;
       const responseText = await executeGenerateContentRoundRobin(requestPrompt, Object.assign({}, {
          responseMimeType: "application/json",
          temperature: 0.1
-      }, { byokKey: req?.headers["x-cerebras-key"] || req?.headers["x-byok-key"] || (req?.headers["authorization"] || "").replace("Bearer ","") }));
+      }, { byokKey: req?.headers["x-cerebras-key"] || req?.headers["x-byok-key"] || (req?.headers["authorization"] || "").replace("Bearer ",""), groqKey: req?.headers["x-groq-key"] }));
 
       let cleanText = (responseText as string).trim();
       if (cleanText.startsWith("```json")) {
@@ -3847,6 +3925,72 @@ ${jsonText}`;
       }
     } catch (error: any) {
       console.error("Automation validate-json error:", error);
+      next(error);
+    }
+  });
+
+  app.post("/api/ai/fix-json-structure", async (req, res, next) => {
+    try {
+      const { jsonText } = req.body;
+      if (!jsonText || !jsonText.trim()) {
+        return res.status(400).json({ error: true, message: "Missing JSON data." });
+      }
+
+      const requestPrompt = `ROLE: Strict JSON Format Converter.
+TASK: Reformat the input text/JSON into the target JSON Schema.
+   
+CRITICAL RULES:
+1. DO NOT change, translate, correct grammar, rewrite, or modify ANY text content.
+2. Keep exact original wording, spacing, and line-breaks (\\n).
+3. Map key concepts to 'front' and 'back' (e.g. term -> front, definition -> back, q -> front, a -> back).
+4. Return ONLY a JSON Array containing the cards.
+5. NO markdown block. NO explanations.
+
+TARGET SCHEMA (Array of cards):
+[
+  {
+    "front": "string",
+    "back": "string"
+  }
+]
+
+Input Data:
+${jsonText}`;
+
+      const responseText = await executeGenerateContentRoundRobin(requestPrompt, Object.assign({}, { 
+        responseMimeType: "application/json", 
+        temperature: 0.1 
+      }, { byokKey: req?.headers["x-cerebras-key"] || req?.headers["x-byok-key"] || (req?.headers["authorization"] || "").replace("Bearer ",""), groqKey: req?.headers["x-groq-key"] }));
+
+      let cleanText = (responseText as string).trim();
+      if (cleanText.startsWith("\`\`\`json")) {
+        cleanText = cleanText.substring(7);
+      } else if (cleanText.startsWith("\`\`\`")) {
+        cleanText = cleanText.substring(3);
+      }
+      if (cleanText.endsWith("\`\`\`")) {
+        cleanText = cleanText.substring(0, cleanText.length - 3);
+      }
+      cleanText = cleanText.trim();
+
+      try {
+        const parsed = JSON.parse(cleanText);
+        return res.json({ success: true, cards: parsed });
+      } catch (parseErr) {
+        console.warn("JSON fix-json-structure parse failed:", cleanText);
+        const match = cleanText.match(/\[\s*\{[\s\S]*\}\s*\]/);
+        if (match) {
+          try {
+            const parsedMatch = JSON.parse(match[0]);
+            return res.json({ success: true, cards: parsedMatch });
+          } catch (e) {
+            console.error("Regex match JSON parse failed", e);
+          }
+        }
+        return res.status(500).json({ error: true, message: "AI format failed." });
+      }
+    } catch (error: any) {
+      console.error("AI fix-json-structure error:", error);
       next(error);
     }
   });
@@ -4084,8 +4228,8 @@ Hãy trả về TRỰC TIẾP đoạn prompt đó, không giải thích, không 
       const responseText = await executeGenerateContentRoundRobin(contents, Object.assign({}, {
         systemInstruction,
         temperature: 0.7,
-        model: "gemini-2.5-flash"
-      }, { byokKey: req?.headers["x-cerebras-key"] || req?.headers["x-byok-key"] || (req?.headers["authorization"] || "").replace("Bearer ","") }));
+        model: "gemini-2.5-flash-lite"
+      }, { byokKey: req?.headers["x-cerebras-key"] || req?.headers["x-byok-key"] || (req?.headers["authorization"] || "").replace("Bearer ",""), groqKey: req?.headers["x-groq-key"] }));
 
       res.json({ success: true, prompt: responseText.trim() });
     } catch (err: any) {
@@ -4181,7 +4325,7 @@ Hãy trả về TRỰC TIẾP đoạn prompt đó, không giải thích, không 
       // Update firestore asynchronously
       try {
         await updateKeyMetrics(fsIndex, metric);
-      } catch (e: any) {
+        } catch (e: any) {
         console.error("Failed to update firestore key metrics from client report:", e.message || e);
       }
 

@@ -1638,9 +1638,7 @@ async function executeFetchWithBackoffAndEvasion(
   let providerType: "primary" | "backup" = "primary";
 
   // Check if AI requested of standard parsed routes
-  const isAiRequest = INTERCEPTED_AI_ROUTES.some((route) =>
-    url.includes(route),
-  );
+  const isAiRequest = false; // Interception disabled. Ensure API calls are server-side ONLY.
 
   const writeCache = async (res: Response, urlKey: string, bodyObj: any) => {
     try {
@@ -2225,16 +2223,20 @@ export async function safeRequest(
     
     if (typeof localStorage !== "undefined") {
       const byokKey = localStorage.getItem("henosis_cerebras_key");
+      const groqKey = localStorage.getItem("henosis_groq_key");
       const urlStr = url.toString();
-      const isAiEndpoint = urlStr.includes('/api/agent') || urlStr.includes('/api/automation') || urlStr.includes('/api/formatting') || urlStr.includes('/api/extract') || urlStr.includes('/api/exam') || urlStr.includes('/api/convert-document') || urlStr.includes('/api/vibe/translate-definition');
-      if (isAiEndpoint && !byokKey) {
+      const isAiEndpoint = urlStr.includes('/api/agent') || urlStr.includes('/api/automation') || urlStr.includes('/api/formatting') || urlStr.includes('/api/extract') || urlStr.includes('/api/exam') || urlStr.includes('/api/convert-document') || urlStr.includes('/api/vibe/translate-definition') || urlStr.includes('/api/ai/fix-json-structure');
+      if (isAiEndpoint && !byokKey && !groqKey) {
           if (typeof window !== 'undefined') {
              window.dispatchEvent(new CustomEvent("require-byok-key"));
           }
-          throw new Error("LỖI BẢO MẬT: Chưa cấu hình Google API Key. Vui lòng lấy Key miễn phí để tiếp tục.");
+          throw new Error("LỖI BẢO MẬT: Chưa cấu hình Google API Key hoặc Groq API Key. Vui lòng lấy Key miễn phí để tiếp tục.");
       }
       if (byokKey && !headers["x-cerebras-key"]) {
         headers["x-cerebras-key"] = byokKey;
+      }
+      if (groqKey && !headers["x-groq-key"]) {
+        headers["x-groq-key"] = groqKey;
       }
     }
     mergedOptions.headers = headers;

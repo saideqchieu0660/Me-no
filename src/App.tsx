@@ -134,6 +134,9 @@ function Layout({ children }: { children: React.ReactNode }) {
   const [cerebrasKeyInput, setCerebrasKeyInput] = useState(localStorage.getItem("henosis_cerebras_key") || "");
   const hasCerebrasKey = !!localStorage.getItem("henosis_cerebras_key");
 
+  const [groqKeyInput, setGroqKeyInput] = useState(localStorage.getItem("henosis_groq_key") || "");
+  const hasGroqKey = !!localStorage.getItem("henosis_groq_key");
+
   const handleSaveCerebrasKey = async () => {
     if (cerebrasKeyInput.trim()) {
       const keyStr = cerebrasKeyInput.trim();
@@ -170,6 +173,21 @@ function Layout({ children }: { children: React.ReactNode }) {
     localStorage.removeItem("henosis_cerebras_key");
     setCerebrasKeyInput("");
     toast("Đã xóa Google API Key!");
+  };
+
+  const handleSaveGroqKey = async () => {
+    if (groqKeyInput.trim()) {
+      const keyStr = groqKeyInput.trim();
+      localStorage.setItem("henosis_groq_key", keyStr);
+      toast("Đã lưu Groq API Key trên máy thành công!");
+      setGroqKeyInput(keyStr);
+    }
+  };
+
+  const handleDeleteGroqKey = () => {
+    localStorage.removeItem("henosis_groq_key");
+    setGroqKeyInput("");
+    toast("Đã xóa Groq API Key!");
   };
 
   // Auto-fetch BYOK key from cloud if not present locally
@@ -1658,7 +1676,7 @@ function Layout({ children }: { children: React.ReactNode }) {
                     </h4>
                     <div className="p-4 rounded-xl bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-200 dark:border-zinc-700 flex flex-col gap-3">
                       <p className="text-xs text-zinc-600 dark:text-zinc-400">
-                        Hệ thống sử dụng siêu AI Google (Gemini). Nhập API Key để sử dụng. Đăng ký nhận key miễn phí tại <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline font-bold">aistudio.google.com</a>.
+                        Hệ thống sử dụng siêu AI Google (Gemini) và Groq chạy luân phiên để chống quá tải. Nhập API Key tương ứng để sử dụng. Đăng ký nhận key miễn phí tại <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline font-bold">aistudio.google.com</a> (Gemini) hoặc <a href="https://console.groq.com/keys" target="_blank" rel="noopener noreferrer" className="text-orange-500 hover:underline font-bold">console.groq.com</a> (Groq).
                       </p>
                       <div className="flex items-center gap-2">
                         <div className="relative flex-grow">
@@ -1680,6 +1698,33 @@ function Layout({ children }: { children: React.ReactNode }) {
                         {hasCerebrasKey && (
                           <button
                             onClick={handleDeleteCerebrasKey}
+                            className="px-3 py-2 bg-rose-500/10 hover:bg-rose-500/20 text-rose-500 text-xs font-bold rounded-lg transition-colors shrink-0 cursor-pointer"
+                          >
+                            Xóa
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <div className="relative flex-grow">
+                          <Key className="w-4 h-4 text-zinc-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                          <input
+                            type="password"
+                            placeholder="Groq API Key (Bắt đầu bằng gsk_...)"
+                            value={groqKeyInput}
+                            onChange={(e) => setGroqKeyInput(e.target.value)}
+                            className="w-full pl-9 pr-3 py-2 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg text-sm focus:outline-none focus:border-orange-500 transition-colors placeholder:text-zinc-400"
+                          />
+                        </div>
+                        <button
+                          onClick={handleSaveGroqKey}
+                          className="px-3 py-2 bg-orange-500 hover:bg-orange-600 text-zinc-50 text-xs font-bold rounded-lg transition-colors shrink-0 cursor-pointer"
+                        >
+                          Lưu
+                        </button>
+                        {hasGroqKey && (
+                          <button
+                            onClick={handleDeleteGroqKey}
                             className="px-3 py-2 bg-rose-500/10 hover:bg-rose-500/20 text-rose-500 text-xs font-bold rounded-lg transition-colors shrink-0 cursor-pointer"
                           >
                             Xóa
