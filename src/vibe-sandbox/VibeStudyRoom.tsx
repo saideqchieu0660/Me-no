@@ -527,7 +527,7 @@ export default function VibeStudyRoom() {
     if (rawDeck && user) {
       setAccessDenied(false);
     }
-  }, [rawDeck, user]);
+  }, [rawDeck?.id, user?.id]);
 
   // 2. Load personal card states ONCE to save reads instead of real-time onSnapshot
   useEffect(() => {
@@ -827,7 +827,7 @@ export default function VibeStudyRoom() {
         VibeProgressSyncManager.markLocalUpdate(user?.id || "guest", deck.id);
       }
     }
-  }, [finished, deck, user?.id]);
+  }, [finished, deck?.id, user?.id]);
   const [sessionMasteryGained, setSessionMasteryGained] = useState(0);
   const [sessionStartTime] = useState(() => Date.now());
   const [sessionTimeSpent, setSessionTimeSpent] = useState(0);
@@ -939,7 +939,7 @@ export default function VibeStudyRoom() {
       return isAdmin; // Only admin/teacher can edit system/official decks
     }
     return isCreator || isAdmin;
-  }, [user, deck]);
+  }, [user?.id, user?.role, deck?.id, deck?.createdBy]);
 
   useEffect(() => {
     if (deck && !isEditingMetadata) {
@@ -956,7 +956,7 @@ export default function VibeStudyRoom() {
             : "general",
       );
     }
-  }, [deck, isEditingMetadata]);
+  }, [deck?.id, deck?.title, deck?.description, deck?.subject, isEditingMetadata]);
 
   const handleUpdateDeckMetadata = async () => {
     if (!deck || !deckEditTitle.trim() || !canEditDeck) return;
@@ -1025,7 +1025,7 @@ export default function VibeStudyRoom() {
         console.error("Error backing up updated deck to offline DB:", e),
       );
     }
-  }, [deck, isOfflineSaved]);
+  }, [deck?.id, deck?.lastUpdatedAt, deck?.cards?.length, isOfflineSaved]);
 
   const handleToggleOffline = async () => {
     if (!deck) return;
@@ -1191,7 +1191,7 @@ export default function VibeStudyRoom() {
         window.removeEventListener("vibe-progress-synced", handleProgressSynced);
       };
     }
-  }, [deck, user]);
+  }, [deck?.id, user?.id, initialMode]);
 
   useEffect(() => {
     if (deck && currentIndex !== undefined && currentIndex >= 0) {
@@ -1210,7 +1210,7 @@ export default function VibeStudyRoom() {
         console.warn("Storage Quota Exceeded", e);
       }
     }
-  }, [currentIndex, deck, user?.id, sessionCorrectCount, sessionMasteryGained, sessionTimeSpent, sessionHistory]);
+  }, [currentIndex, deck?.id, user?.id, sessionCorrectCount, sessionMasteryGained, sessionTimeSpent, sessionHistory]);
 
   useEffect(() => {
     setIsHintRevealed(false);
@@ -1265,7 +1265,7 @@ export default function VibeStudyRoom() {
   const canEditCurrentCard = useMemo(() => {
     // Vibe sandbox mode: Cho phép chỉnh sửa thẻ ở chế độ học cho mọi deck (local changes)
     return true;
-  }, [user, deck, currentCard]);
+  }, []);
 
   const executeActiveCardDeletion = useCallback(async () => {
     if (!deck || !currentCard || !canEditDeck) return;
@@ -1318,7 +1318,7 @@ export default function VibeStudyRoom() {
     } finally {
       setIsUpdatingCard(false);
     }
-  }, [deck, currentCard, canEditDeck, studyQueue, currentIndex]);
+  }, [deck?.id, currentCard?.id, canEditDeck, studyQueue, currentIndex]);
 
   const startDeleteCountdown = useCallback(
     (e: React.MouseEvent) => {
@@ -1611,7 +1611,7 @@ export default function VibeStudyRoom() {
     } catch (err) {
       console.error("Error generating report", err);
     }
-  }, [currentCard, deck]);
+  }, [currentCard?.id, deck?.id, deck?.title, deck?.cards?.length]);
 
   const handleMark = useCallback(
     (remembered: boolean) => {

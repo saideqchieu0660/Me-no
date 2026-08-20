@@ -95,6 +95,7 @@ class CardStateManagerClass {
   private stateCache: Map<string, PersonalCardState> = new Map();
   private subscribers: Map<string, Subscriber[]> = new Map();
   private hydratedUsers: Set<string> = new Set();
+  private hydratingUsers: Set<string> = new Set();
 
   // Generates cache key
   private getKey(userId: string, cardId: string) {
@@ -147,7 +148,8 @@ class CardStateManagerClass {
 
   // Hydrates states from IDB and runs Read-Only migration from legacy sources if needed
   async hydrateStates(userId: string): Promise<void> {
-    if (this.hydratedUsers.has(userId)) return;
+    if (this.hydratedUsers.has(userId) || this.hydratingUsers.has(userId)) return;
+    this.hydratingUsers.add(userId);
 
     try {
       const allKeys = await idbKeys();
@@ -169,6 +171,8 @@ class CardStateManagerClass {
       this.hydratedUsers.add(userId);
     } catch (err) {
       console.error("CardStateManager: Hydration error", err);
+    } finally {
+      this.hydratingUsers.delete(userId);
     }
   }
 
@@ -233,7 +237,8 @@ class CardStateManagerClass {
         if (deckStatesSnap.empty && lastSync === 0) {
            // Migration from cardsState to vibe_deckStates
            const legacyCol = collection(db, `users/${userId}/cardsState`);
-           const legacySnap = await fsGetDocs(legacyCol);
+           const { limit } = await import("firebase/firestore");
+           const legacySnap = await fsGetDocs(query(legacyCol, limit(500)));
            if (!legacySnap.empty) {
                const statesMap: any = {};
                legacySnap.forEach((d: any) => {

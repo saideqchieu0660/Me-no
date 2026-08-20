@@ -486,7 +486,7 @@ export default function LegacyStudyRoom() {
     if (rawDeck && user) {
       setAccessDenied(false);
     }
-  }, [rawDeck, user]);
+  }, [rawDeck?.id, user?.id]);
 
   // 2. Listen to personal card states in real-time
   const unsubCardStatesRef = useRef<(() => void) | null>(null);
@@ -736,7 +736,7 @@ export default function LegacyStudyRoom() {
         localStorage.setItem(progressKey, "0");
       }
     }
-  }, [finished, deck, user?.id]);
+  }, [finished, deck?.id, user?.id]);
   const [sessionCorrectCount, setSessionCorrectCount] = useState(0);
   const [sessionMasteryGained, setSessionMasteryGained] = useState(0);
   const [sessionStartTime] = useState(() => Date.now());
@@ -846,7 +846,7 @@ export default function LegacyStudyRoom() {
       return isAdmin; // Only admin/teacher can edit system/official decks
     }
     return isCreator || isAdmin;
-  }, [user, deck]);
+  }, [user?.id, user?.role, deck?.id, deck?.createdBy]);
 
   useEffect(() => {
     if (deck && !isEditingMetadata) {
@@ -863,7 +863,7 @@ export default function LegacyStudyRoom() {
             : "general",
       );
     }
-  }, [deck, isEditingMetadata]);
+  }, [deck?.id, deck?.title, deck?.description, deck?.subject, isEditingMetadata]);
 
   const handleUpdateDeckMetadata = async () => {
     if (!deck || !deckEditTitle.trim() || !canEditDeck) return;
@@ -932,7 +932,7 @@ export default function LegacyStudyRoom() {
         console.error("Error backing up updated deck to offline DB:", e),
       );
     }
-  }, [deck, isOfflineSaved]);
+  }, [deck?.id, deck?.lastUpdatedAt, deck?.cards?.length, isOfflineSaved]);
 
   const handleToggleOffline = async () => {
     if (!deck) return;
@@ -1118,7 +1118,7 @@ export default function LegacyStudyRoom() {
       setSessionTimeSpent(0);
       setSessionHistory([]);
     }
-  }, [deck, user]);
+  }, [deck?.id, user?.id]);
 
   useEffect(() => {
     if (deck && currentIndex !== undefined && currentIndex >= 0) {
@@ -1129,7 +1129,7 @@ export default function LegacyStudyRoom() {
         console.warn("Storage Quota Exceeded", e);
       }
     }
-  }, [currentIndex, deck, user?.id]);
+  }, [currentIndex, deck?.id, user?.id]);
 
   useEffect(() => {
     setIsHintRevealed(false);
@@ -1194,7 +1194,7 @@ export default function LegacyStudyRoom() {
   const canEditCurrentCard = useMemo(() => {
     // Vibe sandbox mode: Cho phép chỉnh sửa thẻ ở chế độ học cho mọi deck (local changes)
     return true;
-  }, [user, deck, currentCard]);
+  }, []);
 
   const executeActiveCardDeletion = useCallback(async () => {
     if (!deck || !currentCard || !canEditDeck) return;
@@ -1247,7 +1247,7 @@ export default function LegacyStudyRoom() {
     } finally {
       setIsUpdatingCard(false);
     }
-  }, [deck, currentCard, canEditDeck, studyQueue, currentIndex]);
+  }, [deck?.id, currentCard?.id, canEditDeck, studyQueue, currentIndex]);
 
   const startDeleteCountdown = useCallback(
     (e: React.MouseEvent) => {
@@ -1540,7 +1540,7 @@ export default function LegacyStudyRoom() {
     } catch (err) {
       console.error("Error generating report", err);
     }
-  }, [currentCard, deck]);
+  }, [currentCard?.id, deck?.id, deck?.title, deck?.cards?.length]);
 
   const handleMark = useCallback(
     (remembered: boolean) => {

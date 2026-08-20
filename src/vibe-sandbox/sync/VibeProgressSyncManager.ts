@@ -1,5 +1,5 @@
 import { db } from "../../lib/firebase";
-import { doc, getDoc, setDoc, collection, getDocs, writeBatch, onSnapshot } from "firebase/firestore";
+import { doc, getDoc, setDoc, collection, getDocs, writeBatch, onSnapshot, query, orderBy, limit } from "firebase/firestore";
 
 export interface DeckProgress {
   deckId: string;
@@ -23,7 +23,6 @@ export class VibeProgressSyncManager {
     this.stopRealtimeSync();
     this.currentSyncUid = userId;
 
-    const { query, orderBy, limit } = require("firebase/firestore");
     const colRef = collection(db, `users/${userId}/studyProgress`);
     // Only listen to the 50 most recently updated decks
     const q = query(colRef, orderBy("updatedAt", "desc"), limit(50));
@@ -239,7 +238,6 @@ export class VibeProgressSyncManager {
 
     try {
       // 1. Fetch cloud progress (limited to prevent unbounded reads)
-      const { query, orderBy, limit } = require("firebase/firestore");
       const colRef = collection(db, `users/${userId}/studyProgress`);
       const q = query(colRef, orderBy("updatedAt", "desc"), limit(200));
       const snaps = await getDocs(q);
@@ -330,7 +328,6 @@ export class VibeProgressSyncManager {
    * It takes everything on the cloud and overwrites local, ignoring local timestamps.
    */
   static async forcePullAll(userId: string): Promise<number> {
-    const { query, orderBy, limit } = require("firebase/firestore");
     const colRef = collection(db, `users/${userId}/studyProgress`);
     const q = query(colRef, orderBy("updatedAt", "desc"), limit(200));
     const snaps = await getDocs(q);

@@ -178,6 +178,32 @@ class SyncEngineClass {
           }
         }
         await batch.commit();
+
+        // Update local timestamps to match the ones we just pushed to the cloud
+        // to prevent phantom updates from onSnapshot due to timestamp mismatches.
+        for (const item of queue) {
+          try {
+            if (item.type === "UPSERT_DECK") {
+              const localDeck = await get(`vibe_deck_${item.payload.id}`) as any;
+              if (localDeck) await set(`vibe_deck_${item.payload.id}`, { ...localDeck, lastUpdatedAt: item.timestamp });
+            } else if (item.type === "UPSERT_PROFILE" || item.type === "INCREMENT_PROFILE") {
+              const localProfile = await get(`vibe_profile_${item.payload.id}`) as any;
+              if (localProfile) await set(`vibe_profile_${item.payload.id}`, { ...localProfile, lastUpdatedAt: item.timestamp });
+            } else if (item.type === "UPSERT_CARD_STATE") {
+              const localState = await get(`vibe_cardstate_${item.payload.uid}_${item.payload.cardId}`) as any;
+              if (localState) await set(`vibe_cardstate_${item.payload.uid}_${item.payload.cardId}`, { ...localState, lastUpdatedAt: item.timestamp });
+              
+              const v1State = await get(`vibe_personal_card_states_v1_${item.payload.uid}_${item.payload.cardId}`) as any;
+              if (v1State) await set(`vibe_personal_card_states_v1_${item.payload.uid}_${item.payload.cardId}`, { ...v1State, updatedAt: item.timestamp });
+            } else if (item.type === "UPSERT_PROGRESS") {
+              const localProg = await get(`vibe_study_progress_${item.payload.userId}_${item.payload.deckId}`) as any;
+              if (localProg) await set(`vibe_study_progress_${item.payload.userId}_${item.payload.deckId}`, { ...localProg, lastUpdatedAt: item.timestamp });
+            }
+          } catch (err) {
+            console.warn("[VibeSyncEngine] Failed to update local timestamp for item:", item.type, err);
+          }
+        }
+
         // Clear successfully synced items
         await this.setQueue([]);
       }
